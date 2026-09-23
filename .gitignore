@@ -280,3 +280,14 @@ web-login.json
 # webpack emits. Built by the project file, so a checkout needs node and not
 # a copy of the bundle.
 /EMSP/Frontend/dist/
+
+# What webpack emits for the Gateway library. Built by the project file, so a
+# checkout needs node and not a copy of the bundle.
+/Gateway/Frontend/dist/
+
+# What a running gateway is configured as: its name servers and its time
+# servers. A property of this particular installation, not of the source.
+configuration.json
+
+# What a test run leaves behind.
+TestResults/
