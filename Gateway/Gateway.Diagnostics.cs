@@ -19,6 +19,9 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 
 using Newtonsoft.Json.Linq;
 
@@ -366,6 +369,187 @@ namespace cloud.charging.open.Gateway
         /// thing, with meter readings and certificates hanging off it, and it
         /// is not something a button does by surprise.
         /// </remarks>
+        #region (static) TLSSteps(TLS, Now)
+
+        /// <summary>
+        /// What a time server's TLS session and certificate say, and whether that
+        /// held up - as steps of a server's test, from the session to the verdict.
+        /// </summary>
+        /// <remarks>
+        /// Every certificate of the chain with both ends of its validity and the
+        /// days that are left: the root's as much as the server's. A root can be
+        /// pinned, and a pinned root that runs out stops whatever relies on it,
+        /// however new the server's certificate is. The root also comes with its
+        /// SHA-256 fingerprint, which is what a pin is compared with.
+        ///
+        /// The chain is the one this gateway built, not the one the server sent -
+        /// see NTSKE_TLSInfo.ValidatedChain. Where none was built, the server's
+        /// certificates are shown as they came.
+        ///
+        /// The verdict is Norn's, taken from what its validation decided; the
+        /// reasons are its chain's, in words, because the platform's own texts
+        /// for them are in whatever language the machine speaks.
+        /// </remarks>
+        /// <param name="TLS">What the key exchange kept of its TLS session.</param>
+        /// <param name="Now">The moment the days that are left are counted from.</param>
+        public static IEnumerable<(String Level, String Text)> TLSSteps(NTSKE_TLSInfo   TLS,
+                                                                         DateTimeOffset  Now)
+        {
+
+            var session = new[] {
+                              TLS.NegotiatedTLSVersion,
+                              TLS.NegotiatedCipherSuite,
+                              TLS.NegotiatedApplicationProtocol is String protocol ? $"ALPN {protocol}" : null
+                          }.Where(part => part is not null).ToArray();
+
+            if (session.Length > 0)
+                yield return ("info", $"{String.Join(", ", session)}.");
+
+            if (TLS.ServerCertificate is null)
+                yield break;
+
+            IReadOnlyList<X509Certificate2> chain = TLS.ValidatedChain.  Count > 0 ? TLS.ValidatedChain
+                                                  : TLS.CertificateChain.Count > 0 ? TLS.CertificateChain
+                                                  : [ TLS.ServerCertificate ];
+
+            for (var position = 0; position < chain.Count; position++)
+            {
+
+                var certificate = chain[position];
+                var selfSigned  = certificate.SubjectName.RawData.AsSpan().SequenceEqual(certificate.IssuerName.RawData);
+                var last        = position == chain.Count - 1;
+
+                var what        = position == 0  ? selfSigned ? "Server certificate, self-signed" : "Server certificate"
+                                : !last          ? "Intermediate CA"
+                                : selfSigned     ? "Root CA"
+                                :                  "Last in the chain, and no root";
+
+                var (level, validity) = Validity(certificate, Now);
+
+                yield return (level,
+                              String.Concat(
+                                  $"{what}: {certificate.Subject}",
+                                  position == 0 && NamesOf(certificate) is String names ? $", for {names}"               : "",
+                                  last && !selfSigned                                   ? $", issued by {certificate.Issuer}" : "",
+                                  $"; {Certificates.KeyAlgorithmOf(certificate)}, {certificate.SignatureAlgorithm.FriendlyName ?? certificate.SignatureAlgorithm.Value}",
+                                  $"; {validity}."
+                              ));
+
+                // What a pin is compared with - for the certificate the chain
+                // ends at, which is the server's own when it signed itself.
+                if (last && selfSigned)
+                    yield return ("info", $"{(position == 0 ? "Its" : "The root's")} SHA-256 fingerprint: {Certificates.ThumbprintOf(certificate)}.");
+
+            }
+
+            var host   = TLS.CheckedHostname?.Trimmed;
+            var errors = TLS.CertificatePolicyErrors ?? SslPolicyErrors.None;
+
+            if (errors == SslPolicyErrors.None)
+                yield return ("notice", String.Concat(
+                                            "Validated: the chain ends at a root this machine trusts",
+                                            TLS.RevocationMode == X509RevocationMode.Online ? ", nothing in it is revoked (asked online)"                : "",
+                                            host is not null                                ? $", and '{host}' is one of the server certificate's names" : "",
+                                            "."
+                                        ));
+
+            else
+            {
+
+                var reasons = TLS.ChainStatus.Select(ReasonFor).Distinct().ToList();
+
+                if (errors.HasFlag(SslPolicyErrors.RemoteCertificateChainErrors) && reasons.Count == 0)
+                    reasons.Add("its chain did not validate");
+
+                if (errors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch))
+                    reasons.Add(host is not null
+                                    ? $"'{host}' is not one of the server certificate's names"
+                                    : "it was issued for another name");
+
+                if (errors.HasFlag(SslPolicyErrors.RemoteCertificateNotAvailable))
+                    reasons.Add("no certificate came");
+
+                yield return ("error", $"Not validated: {String.Join("; ", reasons)}.");
+
+            }
+
+        }
+
+        /// <summary>
+        /// Both ends of a certificate's validity, and where the given moment is
+        /// between them - with the level that deserves.
+        /// </summary>
+        /// <remarks>
+        /// A week's warning, as Norn's monitoring gives by default. Inside its
+        /// validity is information; outside it, on either side, is an error.
+        /// </remarks>
+        private static (String Level, String Text) Validity(X509Certificate2  Certificate,
+                                                            DateTimeOffset    Now)
+        {
+
+            var notBefore  = new DateTimeOffset(Certificate.NotBefore.ToUniversalTime());
+            var notAfter   = new DateTimeOffset(Certificate.NotAfter. ToUniversalTime());
+            var span       = String.Create(CultureInfo.InvariantCulture, $"valid {notBefore:yyyy-MM-dd HH:mm:ss} to {notAfter:yyyy-MM-dd HH:mm:ss} UTC");
+
+            if (Now < notBefore)
+                return ("error",   $"{span}, not valid for another {Days(notBefore - Now)} day(s)");
+
+            if (Now > notAfter)
+                return ("error",   $"{span}, expired {Days(Now - notAfter)} day(s) ago");
+
+            var left = Days(notAfter - Now);
+
+            return (left <= 7 ? "warning" : "info",
+                    $"{span}, {left} day(s) left");
+
+            static Int32 Days(TimeSpan Span)
+                => (Int32) Math.Floor(Span.TotalDays);
+
+        }
+
+        /// <summary>
+        /// The names a certificate is for - its subject alternative names, which
+        /// are the only ones a host name is matched against - or null when it
+        /// names none.
+        /// </summary>
+        private static String? NamesOf(X509Certificate2 Certificate)
+        {
+
+            var alternative = Certificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
+
+            if (alternative is null)
+                return null;
+
+            var names = alternative.EnumerateDnsNames().
+                            Concat(alternative.EnumerateIPAddresses().Select(address => address.ToString())).
+                            ToArray();
+
+            return names.Length == 0 ? null
+                 : names.Length <= 4 ? String.Join(", ", names)
+                 :                     $"{String.Join(", ", names.Take(4))} and {names.Length - 4} more";
+
+        }
+
+        /// <summary>
+        /// Why a chain did not validate, in words.
+        /// </summary>
+        private static String ReasonFor(X509ChainStatusFlags Status)
+
+            => Status switch {
+                   X509ChainStatusFlags.UntrustedRoot            => "its root is not one this machine trusts",
+                   X509ChainStatusFlags.PartialChain             => "no chain up to a root could be built",
+                   X509ChainStatusFlags.NotTimeValid             => "a certificate in it is outside its validity",
+                   X509ChainStatusFlags.Revoked                  => "a certificate in it has been revoked",
+                   X509ChainStatusFlags.RevocationStatusUnknown  => "whether a certificate in it is revoked could not be found out",
+                   X509ChainStatusFlags.OfflineRevocation        => "the revocation lists could not be reached",
+                   X509ChainStatusFlags.NotSignatureValid        => "a signature in it does not verify",
+                   X509ChainStatusFlags.NotValidForUsage         => "a certificate in it is not meant for this use",
+                   X509ChainStatusFlags.Cyclic                   => "the chain runs in a circle",
+                   _                                             => Status.ToString()
+               };
+
+        #endregion
+
         #region TestTimeServerAsync(Host = null, CancellationToken = default)
 
         /// <summary>
@@ -471,14 +655,33 @@ namespace cloud.charging.open.Gateway
 
             var where = directedAt ?? $"{host}";
 
+            // The name as people read it, for every sentence below - the steps
+            // and the log alike. Without the root's dot: "ptbtime1.ptb.de." is
+            // the name exactly, and in the middle of a line it reads like a
+            // typing mistake, which is why everything else this gateway prints
+            // leaves it out.
+            var name  = host.Trimmed;
+
+            // A server of the group is asked on its own ports, which need not
+            // be those of the client above: the page tests each server from
+            // its own row, and a server with a port of its own was asked on
+            // the usual one and reported as not answering.
+            var entry      = directedAt is null
+                                 ? timeSources.Sources.FirstOrDefault(source => source.Hostname.Equals(host))
+                                 : null;
+
+            var ntsKEPort  = entry?.NTSKEPort ?? configured.NTSKE_Port;
+            var ntpPort    = entry?.NTPPort   ?? configured.NTP_Port;
+
             Step("info", directedAt is null
-                             ? $"Asking {host}: key exchange on port {configured.NTSKE_Port}, " +
-                               $"time on port {configured.NTP_Port}, {configured.Timeout?.TotalSeconds ?? 0:0.#} second(s) allowed."
-                             : $"Asking {directedAt} for the time, with cookies from a key exchange with {host} - " +
+                             ? String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                                             "Asking {0}: key exchange on port {1}, time on port {2}, {3:0.#} second(s) allowed.",
+                                             name, ntsKEPort, ntpPort, configured.Timeout?.TotalSeconds ?? 0)
+                             : $"Asking {directedAt} for the time, with cookies from a key exchange with {name} - " +
                                 "an address cannot have a key exchange of its own, because the TLS certificate is " +
                                 "issued for a name.");
 
-            Log.Info($"NTS test: asking {host} ...", "nts", "test");
+            Log.Info($"NTS test: asking {name} ...", "nts", "test");
 
             #endregion
 
@@ -506,13 +709,13 @@ namespace cloud.charging.open.Gateway
 
                     Step(addresses.Length > 0 ? "info" : "warning",
                          addresses.Length > 0
-                             ? $"'{host}' resolves to {String.Join(", ", addresses)}."
-                             : $"'{host}' resolved to nothing ({lookedUp.ResponseCode}).");
+                             ? $"'{name}' resolves to {String.Join(", ", addresses)}."
+                             : $"'{name}' resolved to nothing ({lookedUp.ResponseCode}).");
 
                 }
                 catch (Exception e)
                 {
-                    Step("warning", $"'{host}' could not be looked up here: {e.Message}. Asking anyway.");
+                    Step("warning", $"'{name}' could not be looked up here: {e.Message}. Asking anyway.");
                 }
             }
 
@@ -535,12 +738,14 @@ namespace cloud.charging.open.Gateway
             // would bind correctly, but this comparison is one refactoring away
             // from being made against IDomainName, where == is reference
             // equality and silently answers "different" for the same name.
-            var asking = host.Equals(configured.Hostname)
+            var asking = host.Equals(configured.Hostname) &&
+                         ntsKEPort == configured.NTSKE_Port   &&
+                         ntpPort   == configured.NTP_Port
                              ? configured
                              : new NTSClient(
                                    host,
-                                   NTSKE_Port:    configured.NTSKE_Port,
-                                   NTP_Port:      configured.NTP_Port,
+                                   NTSKE_Port:    ntsKEPort,
+                                   NTP_Port:      ntpPort,
                                    Timeout:       configured.Timeout,
                                    DNSClient:     dnsClient,
                                    TimeProvider:  TimeProvider
@@ -574,10 +779,16 @@ namespace cloud.charging.open.Gateway
 
                 }
 
+                // Before the verdict on the exchange, and whichever way it went:
+                // a certificate that was refused is the one to see most of all.
+                if (keyExchange.TLSInfo is NTSKE_TLSInfo tlsInfo)
+                    foreach (var (level, text) in TLSSteps(tlsInfo, TimeProvider.GetUtcNow()))
+                        Step(level, text);
+
                 if (!keyExchange.Success || keyExchange.Response is null)
                 {
                     Step("error", $"The key exchange failed ({keyExchange.ErrorCategory}): {keyExchange.ErrorMessage}");
-                    Log.Warning($"NTS test: the key exchange with {host} failed: {keyExchange.ErrorMessage}", "nts", "ntske", "test");
+                    Log.Warning($"NTS test: the key exchange with {name} failed: {keyExchange.ErrorMessage}", "nts", "ntske", "test");
                     return Done(where, false);
                 }
 
@@ -617,7 +828,7 @@ namespace cloud.charging.open.Gateway
                 {
                     Step("error", $"The NTP request to {query.RemoteDescription} failed " +
                                   $"({query.ErrorCategory}): {query.ErrorMessage}");
-                    Log.Warning($"NTS test: the NTP request to {host} failed: {query.ErrorMessage}", "nts", "ntp", "test");
+                    Log.Warning($"NTS test: the NTP request to {name} failed: {query.ErrorMessage}", "nts", "ntp", "test");
                     return Done(where, false);
                 }
 
@@ -638,15 +849,15 @@ namespace cloud.charging.open.Gateway
                 Step("notice", offset.HasValue
                                    ? String.Format(System.Globalization.CultureInfo.InvariantCulture,
                                                    "This gateway's clock is {0:+0.0;-0.0;0} ms off what {1} says.",
-                                                   offset.Value.TotalMilliseconds, host)
-                                   : $"{host} answered, but said nothing this gateway could take an offset from.");
+                                                   offset.Value.TotalMilliseconds, name)
+                                   : $"{name} answered, but said nothing this gateway could take an offset from.");
 
                 #endregion
 
                 Step("info", "The clock was not stepped: that is a different thing, with meter readings and " +
                              "certificates hanging off it, and not something a test does by surprise.");
 
-                Log.Notice($"NTS test: {host} answered in {clock.ElapsedMilliseconds} ms.", "nts", "test");
+                Log.Notice($"NTS test: {name} answered in {clock.ElapsedMilliseconds} ms.", "nts", "test");
 
                 return Done(where, true);
 
@@ -654,7 +865,7 @@ namespace cloud.charging.open.Gateway
             catch (Exception e)
             {
                 Step("error", $"{e.GetType().Name}: {e.Message}");
-                Log.Warning($"NTS test: asking {host} failed: {e.Message}", "nts", "test");
+                Log.Warning($"NTS test: asking {name} failed: {e.Message}", "nts", "test");
                 return Done(where, false);
             }
 
@@ -748,11 +959,19 @@ namespace cloud.charging.open.Gateway
                 // Written down rather than acted on, which is what the white
                 // paper asks for: the disagreement belongs in the metrological
                 // log book, and the time is still a time.
+                //
+                // Invariant, like the lines of the test above, and the agreed
+                // deviation with as many places as it has: it may be set as low
+                // as a millisecond, and a whole-second format wrote that as
+                // "0 s".
                 if (verdict.DeviationExceeded)
                     Log.Warning(
-                        $"NTS: the time servers of group '{group.Name}' disagree by " +
-                        $"{verdict.Spread!.Value.TotalMilliseconds:F1} ms, which reaches the agreed deviation of " +
-                        $"{group.MaxDeviation.TotalSeconds:F0} s.",
+                        String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                                      "NTS: the time servers of group '{0}' disagree by {1:F1} ms, " +
+                                      "which reaches the agreed deviation of {2:0.###} s.",
+                                      group.Name,
+                                      verdict.Spread!.Value.TotalMilliseconds,
+                                      group.MaxDeviation.TotalSeconds),
                         "nts", "test"
                     );
 

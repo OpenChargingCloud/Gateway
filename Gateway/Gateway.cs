@@ -149,6 +149,19 @@ namespace cloud.charging.open.Gateway
         private           TimeSourceGroup                 timeSources;
 
         /// <summary>
+        /// How many of those servers this gateway was told must answer: by the
+        /// last section that named "minServers", or the default of two.
+        /// </summary>
+        /// <remarks>
+        /// Kept apart from the group's own quorum, which cannot be more than the
+        /// servers it has switched on. A lone hostname holds a group to one, and
+        /// if that one were all that was remembered, a list of four arriving
+        /// afterwards would be held to one as well - where the same file, read
+        /// at the next start, holds it to two.
+        /// </remarks>
+        private           Byte                            ntsQuorum       = NTSConfiguration.DefaultMinServers;
+
+        /// <summary>
         /// What actually asks the servers of a group.
         /// </summary>
         /// <remarks>
@@ -542,7 +555,17 @@ namespace cloud.charging.open.Gateway
                 ApplyDNSConfiguration(configuration.DNS);
 
             if (configuration?.NTS is not null)
+            {
+
+                // Checked here rather than when the file was read: a quorum
+                // on its own is about the servers in effect, and which those
+                // are is only known now.
+                if (!TryCheckNTSQuorum(configuration.NTS, out var quorumError))
+                    throw new InvalidOperationException($"{quorumError} Repair or remove '{this.ConfigFile.Path}' and start again.");
+
                 ApplyNTSConfiguration(configuration.NTS);
+
+            }
 
             this.ntsSettings = configuration?.NTS;
 
@@ -1084,15 +1107,23 @@ namespace cloud.charging.open.Gateway
                        new JProperty("tags",           new JArray(Log.KnownTags))
                    )),
 
+                   // The group, which is what sets the clock. This card used to
+                   // lead with "NTS" and the host of the single client the
+                   // detailed test starts from - one server, above the four that
+                   // are actually asked, and with its root dot - and it left out
+                   // every server that was switched off. The servers are now
+                   // named the way the log names them when they change.
+                   //
+                   // And the last synchronisation - the button's, the prompt's
+                   // or the clock check's - when it happened and how it went,
+                   // or nothing while there has been none.
                    new JProperty("time",       new JObject(
-                       new JProperty("nts",            ntsClient.Hostname.ToString()),
-                       new JProperty("timeSources",    new JArray(
-                           timeSources.Bands().SelectMany(band => band).Select(source => new JObject(
-                               new JProperty("hostname",  source.Hostname.ToString()),
-                               new JProperty("priority",  source.Priority)
-                           ))
-                       )),
+                       new JProperty("ntsEnabled",     NTSEnabled),
+                       new JProperty("timeServers",    Described(timeSources)),
                        new JProperty("minServers",     timeSources.MinServers),
+                       new JProperty("checkedEvery",   TimeCheckEvery.ToString()),
+                       new JProperty("lastSync",       lastTimeSync?.Value<String>("at")),
+                       new JProperty("lastSyncResult", LastSyncSaid(lastTimeSync)),
                        new JProperty("now",            TimeProvider.GetUtcNow().ToString("o"))
                    )),
 

@@ -145,6 +145,22 @@ namespace cloud.charging.open.Gateway.Configuration
         /// </summary>
         public const Double  MaxTimeoutSeconds    = 3600;
 
+        /// <summary>
+        /// How often the clock may be checked at most and at least, in seconds:
+        /// ten seconds, which is already more than a time server asks to be
+        /// bothered, and once a day.
+        /// </summary>
+        public const Double  MinCheckEverySeconds = 10;
+        public const Double  MaxCheckEverySeconds = 86400;
+
+        /// <summary>
+        /// The disagreement between time servers that may be agreed on before
+        /// it is written down, in seconds: a millisecond at the least, an hour
+        /// at the most.
+        /// </summary>
+        public const Double  MinDeviationSeconds  = 0.001;
+        public const Double  MaxDeviationSeconds  = 3600;
+
         #endregion
 
 
@@ -166,12 +182,12 @@ namespace cloud.charging.open.Gateway.Configuration
                 !ConfigurationReader.TryReadPort   (JSON, "ntsKEPort",       "nts",      out var ntsKEPort, out Error) ||
                 !ConfigurationReader.TryReadPort   (JSON, "ntpPort",         "nts",      out var ntpPort,   out Error) ||
                 !ConfigurationReader.TryReadSeconds(JSON, "timeoutSeconds",  "nts", 0.1, MaxTimeoutSeconds, out var timeout, out Error) ||
-                !ConfigurationReader.TryReadSeconds(JSON, "checkEverySeconds", "nts", 10, 86400, out var checkEvery, out Error) ||
+                !ConfigurationReader.TryReadSeconds(JSON, "checkEverySeconds", "nts", MinCheckEverySeconds, MaxCheckEverySeconds, out var checkEvery, out Error) ||
                 !ConfigurationReader.TryReadSeconds(JSON, "legalTimeToleranceSeconds", "nts", 0.001, 60, out var tolerance, out Error) ||
                 !ConfigurationReader.TryReadSeconds(JSON, "legalTimeMaxAgeSeconds", "nts", 10, 86400, out var maxAge, out Error) ||
                 !ConfigurationReader.TryReadString (JSON, "legalTimeAuthority", "nts", MaxAuthorityLength, out var authority, out Error) ||
                 !ConfigurationReader.TryReadByte   (JSON, "minServers",         "nts",                     out var minServers, out Error) ||
-                !ConfigurationReader.TryReadSeconds(JSON, "maxDeviationSeconds", "nts", 0.001, 3600,       out var maxDeviation, out Error))
+                !ConfigurationReader.TryReadSeconds(JSON, "maxDeviationSeconds", "nts", MinDeviationSeconds, MaxDeviationSeconds, out var maxDeviation, out Error))
             {
                 return false;
             }
@@ -216,6 +232,16 @@ namespace cloud.charging.open.Gateway.Configuration
                     return false;
                 }
 
+            }
+
+            // A lone hostname is a group of one (see ToGroup), and the same holds
+            // for it as for a list: a quorum it can never reach is worth saying
+            // while somebody is reading the file, not at the first
+            // synchronisation, which could only ever report one server short.
+            else if (hostname is not null && minServers > 1)
+            {
+                Error = $"'nts.minServers' is {minServers}, which is more servers than a lone 'nts.hostname' is.";
+                return false;
             }
 
             #endregion
@@ -278,20 +304,80 @@ namespace cloud.charging.open.Gateway.Configuration
         /// one. That is a worse arrangement than four servers and it is the one
         /// every existing configuration file already has, so it keeps working
         /// rather than becoming an error at the next start.
+        ///
+        /// A section that names no quorum is held to two, as the default group
+        /// is - or to all of its servers, when it has fewer switched on. It used
+        /// to be held to one, so that writing out the PTB's four, which are the
+        /// default, made a group that believed whichever of them answered.
         /// </remarks>
         /// <param name="FallbackHostname">The server to use when the section names none at all.</param>
         public TimeSourceGroup ToGroup(DomainName FallbackHostname)
+        {
 
-            => new ("legal",
-                    Servers is not null
-                        ? Servers.Select(server => server.ToEndpoint())
-                        : [ new NTSServerEndpoint(
-                                Hostname ?? FallbackHostname,
-                                NTSKEPort,
-                                NTPPort
-                            ) ],
-                    MinServers,
-                    MaxDeviation);
+            NTSServerEndpoint[] sources = Servers is not null
+                                              ? [.. Servers.Select(server => server.ToEndpoint())]
+                                              : [ new NTSServerEndpoint(
+                                                      Hostname ?? FallbackHostname,
+                                                      NTSKEPort,
+                                                      NTPPort
+                                                  ) ];
+
+            return new ("legal",
+                        sources,
+                        MinServers ?? QuorumFor(DefaultMinServers, sources),
+                        MaxDeviation);
+
+        }
+
+        #endregion
+
+        #region OverriddenBy(Update)
+
+        /// <summary>
+        /// This section with another laid over it: the other's value for each
+        /// key it names, and this one's for each key it does not.
+        /// </summary>
+        /// <remarks>
+        /// What a save that sends part of the section amounts to, and what the
+        /// file says once that part is merged into it. The list of servers is
+        /// one value and is replaced whole, as it is in the file.
+        /// </remarks>
+        /// <param name="Update">The section laid over this one.</param>
+        public NTSConfiguration OverriddenBy(NTSConfiguration Update)
+
+            => new (Update.Enabled             ?? Enabled,
+                    Update.Hostname            ?? Hostname,
+                    Update.NTSKEPort           ?? NTSKEPort,
+                    Update.NTPPort             ?? NTPPort,
+                    Update.Timeout             ?? Timeout,
+                    Update.CheckEvery          ?? CheckEvery,
+                    Update.LegalTimeAuthority  ?? LegalTimeAuthority,
+                    Update.LegalTimeTolerance  ?? LegalTimeTolerance,
+                    Update.LegalTimeMaxAge     ?? LegalTimeMaxAge,
+                    Update.Servers             ?? Servers,
+                    Update.MinServers          ?? MinServers,
+                    Update.MaxDeviation        ?? MaxDeviation);
+
+        #endregion
+
+        #region (static) QuorumFor(Wanted, Servers)
+
+        /// <summary>
+        /// The quorum a group of these servers can be held to: the one wanted,
+        /// or all of them when fewer are switched on.
+        /// </summary>
+        /// <remarks>
+        /// Lowered rather than refused, because this is for a quorum nobody
+        /// named in the section at hand - the default, or one an earlier section
+        /// set. A quorum a section names itself is checked against its servers
+        /// when it is read, and refused there.
+        /// </remarks>
+        /// <param name="Wanted">The quorum wanted.</param>
+        /// <param name="Servers">The servers of the group, switched on or not.</param>
+        public static Byte QuorumFor(Byte                            Wanted,
+                                     IEnumerable<NTSServerEndpoint>  Servers)
+
+            => (Byte) Math.Max(1, Math.Min(Wanted, Servers.Count(server => server.Enabled)));
 
         #endregion
 

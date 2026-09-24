@@ -75,11 +75,11 @@ export const dnsPage: Page = {
                 ${mayChange ? '' : html`
                     <div class="notice">
                         Signed in as ${auth.user?.roles.join(', ') ?? 'somebody'}, which may look at the name
-                        resolution but not change it. That needs the service or the system administrator role.
+                        resolution but not change it. That needs the system administrator role.
                     </div>
                 `}
 
-                <div class="cards">
+                <div class="cards stacked">
 
                     <section class="card">
 
@@ -218,7 +218,7 @@ export const dnsPage: Page = {
                                         turn, until one answers. To find out what one particular server says,
                                         use the button on its own row.
                                     `
-                                  : html`Running a query needs the driver, the service or the system administrator role.`}
+                                  : html`Running a query needs the operator or the system administrator role.`}
                         </p>
 
                     </section>
@@ -587,7 +587,12 @@ export const dnsPage: Page = {
                     return;
                 }
 
-                busy = true;
+                // The last answer goes the moment the next question is asked.
+                // Left standing under "Asking ...", it read as the answer to
+                // the new one - and when that one never came back, it went on
+                // reading that way.
+                asked = null;
+                busy  = true;
                 paint();
 
                 try
