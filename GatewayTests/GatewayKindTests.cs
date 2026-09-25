@@ -207,6 +207,44 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region AGatewayKeepsNoCertificateStore()
+
+        /// <summary>
+        /// No certificates directory beside the configuration file, and the log
+        /// saying that the gateway keeps none - rather than that it keeps an
+        /// empty store.
+        /// </summary>
+        /// <remarks>
+        /// A gateway presents no certificate and believes none of its own. The
+        /// node below keeps a store for every kind that does, and made one - an
+        /// empty directory, and a line saying it was empty - at every start of
+        /// a gateway too, until the gateway could tell it which kinds of
+        /// certificate it keeps: none.
+        /// </remarks>
+        [Test]
+        public async Task AGatewayKeepsNoCertificateStore()
+        {
+
+            await StartedGateway();
+
+            var logFile  = Directory.GetFiles(Path.Combine(directory, "logs")).Single();
+
+            // Shared for writing, because the gateway still has the file open.
+            using var file      = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader    = new StreamReader(file);
+
+            var logText  = reader.ReadToEnd();
+
+            Assert.Multiple(() => {
+                Assert.That(Directory.Exists(Path.Combine(directory, "certificates")),  Is.False,  "no store beside the configuration file");
+                Assert.That(logText,                                                     Does.Contain("Certificates: this gateway keeps none."));
+                Assert.That(logText,                                                     Does.Not.Contain("(empty)"),  "nothing about an empty store");
+            });
+
+        }
+
+        #endregion
+
     }
 
 }

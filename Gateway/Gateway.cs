@@ -123,7 +123,6 @@ namespace cloud.charging.open.Gateway
         /// <param name="DNSClient">How to resolve names, or null to make a client.</param>
         /// <param name="NTSClient">Where to read the time, or null to make a client.</param>
         /// <param name="Frontend">Where the web interface comes from, or null for the embedded bundle.</param>
-        /// <param name="CertificatesPath">The directory the certificate store of the node below lives in between starts.</param>
         /// <param name="Log">Where everything that happens is written, or null to make a log.</param>
         /// <param name="LogToConsole">Whether the log is also written to the console.</param>
         /// <param name="ConsoleLogLevel">How much of it reaches the console.</param>
@@ -141,7 +140,6 @@ namespace cloud.charging.open.Gateway
                        DNSClient?             DNSClient          = null,
                        NTSClient?             NTSClient          = null,
                        IStaticContentSource?  Frontend           = null,
-                       String?                CertificatesPath   = null,
                        EventLog?              Log                = null,
                        Boolean                LogToConsole       = true,
                        LogLevel               ConsoleLogLevel    = LogLevel.Info,
@@ -152,6 +150,13 @@ namespace cloud.charging.open.Gateway
             : base(Kind:              GatewayKind,
                    Version:           typeof(Gateway).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
                    Roles:             GatewayRoles.All.Select(role => role.Name),
+
+                   // None: a gateway presents no certificate and believes none
+                   // of its own, so the node below keeps no store for it - no
+                   // directory beside the configuration file, and no line
+                   // about an empty one at every start.
+                   CertificateKinds:  [],
+
                    HTTPPort:          HTTPPort ?? DefaultHTTPPort,
                    HTTPHostname:      HTTPHostname,
                    HTTPServer:        HTTPServer,
@@ -163,7 +168,6 @@ namespace cloud.charging.open.Gateway
                    DNSClient:         DNSClient,
                    NTSClient:         NTSClient,
                    Frontend:          Frontend ?? new EmbeddedContentSource(HTTPRoot, typeof(Gateway).Assembly),
-                   CertificatesPath:  CertificatesPath,
                    Log:               Log,
                    LogToConsole:      LogToConsole,
                    ConsoleLogLevel:   ConsoleLogLevel,
