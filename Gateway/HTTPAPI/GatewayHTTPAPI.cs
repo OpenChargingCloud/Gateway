@@ -26,8 +26,11 @@ using Newtonsoft.Json.Linq;
 using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
-using cloud.charging.open.Gateway.Logging;
 using cloud.charging.open.Gateway.Web;
+
+using cloud.charging.open.protocols.WWCP.Node;
+using cloud.charging.open.protocols.WWCP.Node.Web;
+using cloud.charging.open.protocols.WWCP.Node.Logging;
 
 #endregion
 
@@ -56,7 +59,7 @@ namespace cloud.charging.open.Gateway
         /// <summary>
         /// The default root path of this API.
         /// </summary>
-        public static readonly HTTPPath  DefaultAPIPath      = HTTPPath.Parse("/api");
+        public static readonly HTTPPath  DefaultAPIPath      = WWCPNode.DefaultAPIPath;
 
         /// <summary>
         /// The identification of the Server-Sent Events source.
@@ -978,8 +981,8 @@ namespace cloud.charging.open.Gateway
             // HasFlag with more than one flag asks for all of them, which is
             // what a role has to carry to do a change that was several kinds at
             // once. Nobody is named who could only do half of it.
-            var allowed = UserRole.All.Where(role => role.Permissions.HasFlag(Required)).
-                                       Select(role => role.Name);
+            var allowed = GatewayRoles.All.Where(role => role.Permissions.HasFlag(Required)).
+                                           Select(role => role.Name);
 
             Log.Warning(
                 $"'{User.Id}' was refused {Required} on {Request.HTTPMethod} {Request.Path}; " +
@@ -1145,7 +1148,7 @@ namespace cloud.charging.open.Gateway
               // rather than the one the membership was made with. It compared by
               // reference until 2026-09-18, and the same account then came out as
               // systemadmin through Basic auth and as nobody through a cookie.
-            => UserRole.All.Where(role => ExtAPI.IsMember(User, role.GroupId));
+            => GatewayRoles.All.Where(role => ExtAPI.IsMember(User, role.GroupId));
 
         /// <summary>
         /// Everything those roles add up to, or nothing at all when the account

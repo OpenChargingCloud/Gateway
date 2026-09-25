@@ -26,7 +26,7 @@ using NUnit.Framework;
 
 using org.GraphDefined.Vanaheimr.Hermod;
 
-using cloud.charging.open.Gateway.Configuration;
+using cloud.charging.open.protocols.WWCP.Node.Configuration;
 
 #endregion
 
@@ -103,7 +103,7 @@ namespace cloud.charging.open.Gateway.Tests
             gateway = new Gateway(
                           HTTPPort:          IPPort.Parse(port),
                           AccountsPath:      Path.Combine(directory, "accounts"),
-                          ConfigFile:        new GatewayConfigFile(Path.Combine(directory, GatewayConfigFile.DefaultFileName)),
+                          ConfigFile:        new WWCPConfigFile(Path.Combine(directory, WWCPConfigFile.DefaultFileName)),
                           LogToConsole:      false,
                           BridgeDebugLog:    false
                       );
