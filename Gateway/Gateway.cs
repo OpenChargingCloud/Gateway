@@ -340,13 +340,19 @@ namespace cloud.charging.open.Gateway
                            kinds.Where(kind => !kind.IsTrustAnchor() &&  kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
                        )),
 
+                       // Whether one of a kind is told what it is for is the
+                       // store's to say, not the kind's: a TLS identity may be
+                       // told the listeners it is shown on only where the kind
+                       // of node names some, and a gateway names none - so a
+                       // page offering it the name servers and the time servers
+                       // would be offering a refusal.
                        new JProperty("kinds",        new JObject(
                            kinds.Select(kind =>
                                new JProperty(kind.AsText(), new JObject(
                                    new JProperty("description",     kind.Describe()),
                                    new JProperty("trustAnchor",     kind.IsTrustAnchor()),
                                    new JProperty("needsPrivateKey", kind.NeedsPrivateKey()),
-                                   new JProperty("hasUsages",       kind.HasUsages())
+                                   new JProperty("hasUsages",       Certificates.HasUsages(kind))
                                )))
                        )),
 

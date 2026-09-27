@@ -125,7 +125,7 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
 
-        #region (helpers) RootPem(Name) / Upload(Name) / Send(Method, Path, JSON)
+        #region (helpers) RootPem(Name) / Upload(Name) / IdentityUpload(Name) / Send(Method, Path, JSON)
 
         /// <summary>
         /// A self-signed certificate authority, as the text of a PEM file.
@@ -152,6 +152,22 @@ namespace cloud.charging.open.Gateway.Tests
         private static String Upload(String Name)
 
             => Convert.ToBase64String(Encoding.ASCII.GetBytes(RootPem(Name)));
+
+        /// <summary>
+        /// A certificate with its private key, as a PKCS#12 base64-encoded -
+        /// what a gateway would present.
+        /// </summary>
+        private static String IdentityUpload(String Name)
+        {
+
+            using var key       = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var request         = new CertificateRequest($"CN={Name}", key, HashAlgorithmName.SHA256);
+
+            using var identity  = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(365));
+
+            return Convert.ToBase64String(identity.Export(X509ContentType.Pkcs12));
+
+        }
 
         private async Task<(HttpStatusCode Status, JObject JSON)> Send(HttpMethod  Method,
                                                                       String      Path,
@@ -199,7 +215,10 @@ namespace cloud.charging.open.Gateway.Tests
 
                 Assert.That(store["usages"]!.Values<String>(),                              Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer");
                 Assert.That(store["kinds"]!["tlsRoot"]!["hasUsages"]!.Value<Boolean>(),     Is.True);
+                Assert.That(store["kinds"]!["tlsServer"]!["hasUsages"]!.Value<Boolean>(),   Is.True);
                 Assert.That(store["kinds"]!["clientRoot"]!["hasUsages"]!.Value<Boolean>(),  Is.False);
+                Assert.That(store["kinds"]!["tlsIdentity"]!["hasUsages"]!.Value<Boolean>(), Is.False,
+                            "a gateway names no listener an identity could be told of, so a page offers it none");
                 Assert.That(store["certificates"]!["tlsRoot"]![0]!["usages"]!.Values<String>(),  Is.EqualTo(new[] { "nts" }));
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                        Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
@@ -280,6 +299,14 @@ namespace cloud.charging.open.Gateway.Tests
                                                        new JProperty("usages",   "dns")
                                                    ));
 
+            // A TLS identity is told the listeners it is shown on, and a
+            // gateway names none: the name servers are no place to show one.
+            var (onIdentity, identitySaid) = await Send(HttpMethod.Post, "api/v1/certificates", new JObject(
+                                                       new JProperty("kind",     "tlsIdentity"),
+                                                       new JProperty("content",  IdentityUpload("This Gateway")),
+                                                       new JProperty("usages",   new JArray("dns"))
+                                                   ));
+
             var (_, store)            = await Send(HttpMethod.Get, "api/v1/certificates");
 
             Assert.Multiple(() => {
@@ -287,6 +314,8 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(said.ToString(),               Does.Contain("'ntp' is not a usage this gateway knows").And.Contain("dns, nts"));
                 Assert.That(onClient,                      Is.EqualTo(HttpStatusCode.BadRequest));
                 Assert.That(clientSaid.ToString(),         Does.Contain("only a TLS root and a server certificate"));
+                Assert.That(onIdentity,                    Is.EqualTo(HttpStatusCode.BadRequest), identitySaid.ToString());
+                Assert.That(identitySaid.ToString(),       Does.Contain("shown on every listener of this gateway"));
                 Assert.That(notAList,                      Is.EqualTo(HttpStatusCode.BadRequest));
                 Assert.That(listSaid.ToString(),           Does.Contain("has to be a list of usages"));
                 Assert.That(store["certificates"]!.Values().SelectMany(kind => kind.Children()).Any(),
