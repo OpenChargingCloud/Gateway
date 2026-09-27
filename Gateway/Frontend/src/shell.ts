@@ -30,7 +30,8 @@ export const menu: MenuEntry[] = [
         icon:      'fa-sliders',
         children:  [
             { path: '/configuration/dns',      label: 'DNS client',    icon: 'fa-magnifying-glass-location' },
-            { path: '/configuration/nts',      label: 'NTS client',    icon: 'fa-clock'                     }
+            { path: '/configuration/nts',      label: 'NTS client',    icon: 'fa-clock'                     },
+            { path: '/configuration/certificates', label: 'Certificates', icon: 'fa-certificate'            }
         ]
     },
     { path: '/logs', label: 'Logs', icon: 'fa-list-ul' }

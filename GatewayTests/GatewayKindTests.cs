@@ -25,6 +25,7 @@ using NUnit.Framework;
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
+using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 
 #endregion
@@ -34,7 +35,8 @@ namespace cloud.charging.open.Gateway.Tests
 
     /// <summary>
     /// What kind of node a gateway is, as somebody who ran one before it was a
-    /// node sees it: the same names everywhere, and its own roles.
+    /// node sees it: the same names everywhere, its own roles, and the kinds of
+    /// certificate it keeps.
     /// </summary>
     /// <remarks>
     /// Against a gateway that is started, because the names are read where
@@ -207,26 +209,27 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
-        #region AGatewayKeepsNoCertificateStore()
+        #region AGatewayKeepsTheCertificatesOfTLS()
 
         /// <summary>
-        /// No certificates directory beside the configuration file, and the log
-        /// saying that the gateway keeps none - rather than that it keeps an
-        /// empty store.
+        /// A certificates directory beside the configuration file, with one
+        /// directory for each of the four kinds of TLS and none for the seven of
+        /// ISO 15118 - and the log saying what is in it.
         /// </summary>
         /// <remarks>
-        /// A gateway presents no certificate and believes none of its own. The
-        /// node below keeps a store for every kind that does, and made one - an
-        /// empty directory, and a line saying it was empty - at every start of
-        /// a gateway too, until the gateway could tell it which kinds of
-        /// certificate it keeps: none.
+        /// A gateway kept none, until the time servers and name servers it asks
+        /// had to be believed through roots of its own and held to certificates
+        /// it recognises, as a vehicle's are. The seven of ISO 15118 stay a
+        /// vehicle's: seven empty directories beside the configuration file
+        /// would promise something nothing here reads.
         /// </remarks>
         [Test]
-        public async Task AGatewayKeepsNoCertificateStore()
+        public async Task AGatewayKeepsTheCertificatesOfTLS()
         {
 
             await StartedGateway();
 
+            var store    = Path.Combine(directory, "certificates");
             var logFile  = Directory.GetFiles(Path.Combine(directory, "logs")).Single();
 
             // Shared for writing, because the gateway still has the file open.
@@ -235,10 +238,23 @@ namespace cloud.charging.open.Gateway.Tests
 
             var logText  = reader.ReadToEnd();
 
+            String KindsDirectory(CertificateKind Kind)
+                => Path.Combine(store, Kind.Directory().Replace('/', Path.DirectorySeparatorChar));
+
             Assert.Multiple(() => {
-                Assert.That(Directory.Exists(Path.Combine(directory, "certificates")),  Is.False,  "no store beside the configuration file");
-                Assert.That(logText,                                                     Does.Contain("Certificates: this gateway keeps none."));
-                Assert.That(logText,                                                     Does.Not.Contain("(empty)"),  "nothing about an empty store");
+
+                Assert.That(gateway!.Certificates.Kinds,      Is.EqualTo(CertificateKindExtensions.TLS));
+                Assert.That(gateway!.Certificates.Directory,  Is.EqualTo(Path.GetFullPath(store)), "beside the configuration file");
+
+                foreach (var kind in CertificateKindExtensions.TLS)
+                    Assert.That(Directory.Exists(KindsDirectory(kind)),  Is.True,   kind.AsText());
+
+                foreach (var kind in CertificateKindExtensions.ISO15118)
+                    Assert.That(Directory.Exists(KindsDirectory(kind)),  Is.False,  kind.AsText());
+
+                Assert.That(logText,  Does.Contain($"Certificates: 0 in '{Path.GetFullPath(store)}' (empty)."));
+                Assert.That(logText,  Does.Not.Contain("keeps none"));
+
             });
 
         }

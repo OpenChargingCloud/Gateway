@@ -237,20 +237,23 @@ namespace cloud.charging.open.Gateway.Tests
         /// <summary>
         /// What each role could do before roles were data, permission by
         /// permission: the viewer looks, the operator also asks the name and
-        /// time servers, and only the administrators repoint them - or would
-        /// touch certificates, where a gateway had any.
+        /// time servers, and only the administrators repoint them - or change
+        /// the certificates they are held to, which everybody may look at.
         /// </summary>
         [TestCase("viewer",       "configuration:read",  true)]
         [TestCase("viewer",       "dns:read",            true)]
         [TestCase("viewer",       "nts:read",            true)]
+        [TestCase("viewer",       "certificates:read",   true)]
         [TestCase("viewer",       "dns:edit",            false)]
         [TestCase("viewer",       "dns:run",             false)]
         [TestCase("viewer",       "nts:run",             false)]
+        [TestCase("viewer",       "certificates:edit",   false)]
 
         [TestCase("operator",     "configuration:read",  true)]
         [TestCase("operator",     "dns:read",            true)]
         [TestCase("operator",     "dns:run",             true)]
         [TestCase("operator",     "nts:run",             true)]
+        [TestCase("operator",     "certificates:read",   true)]
         [TestCase("operator",     "dns:edit",            false)]
         [TestCase("operator",     "nts:edit",            false)]
         [TestCase("operator",     "certificates:edit",   false)]
@@ -302,6 +305,44 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(permissions.Any(permission => permission.StartsWith('*')),
                             Is.False,
                             "spelt out resource by resource, so that a page asking \"dns:read\" need not know what \"*\" is");
+            });
+
+        }
+
+        #endregion
+
+        #region AnOperatorMayLookAtTheCertificatesAndIsToldWhoMayChangeThem()
+
+        /// <summary>
+        /// The store as a browser signed in as an operator sees it: it opens,
+        /// and an upload, a reload and a deletion are each refused with the
+        /// role to ask for - and nothing refused reached the store.
+        /// </summary>
+        [Test]
+        public async Task AnOperatorMayLookAtTheCertificatesAndIsToldWhoMayChangeThem()
+        {
+
+            await GatewayFrom().Start();
+
+            using var @operator  = await SignedInAs("operator2", "operator");
+
+            var looked           = await @operator.GetAsync("api/v1/certificates");
+            var uploaded         = await @operator.PostAsync("api/v1/certificates",
+                                                             new StringContent("""{ "kind": "tlsRoot", "content": "AA==" }""",
+                                                                               Encoding.UTF8, "application/json"));
+            var reloaded         = await @operator.PostAsync("api/v1/certificates/reload",
+                                                             new StringContent("{}", Encoding.UTF8, "application/json"));
+            var deleted          = await @operator.DeleteAsync("api/v1/certificates/0123456789abcdef");
+            var refusal          = await uploaded.Content.ReadAsStringAsync();
+
+            Assert.Multiple(() => {
+                Assert.That(looked.StatusCode,             Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(uploaded.StatusCode,           Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(refusal,                       Does.Contain("This needs the systemadmin role."));
+                Assert.That(reloaded.StatusCode,           Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(deleted.StatusCode,            Is.EqualTo(HttpStatusCode.Forbidden),
+                            "refused for who is asking, before it is asked whether there is such a certificate");
+                Assert.That(gateway!.Certificates.Entries, Is.Empty);
             });
 
         }

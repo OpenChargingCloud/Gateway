@@ -31,10 +31,13 @@ namespace cloud.charging.open.Gateway
     /// <remarks>
     /// <para>
     /// The node brings the viewer, who may look at everything, and the
-    /// administrators, who may do everything. A gateway adds no resource of
-    /// its own yet - what it is for, handing frames on between charging
-    /// stations and whatever they talk to, is not here - and one role: the
-    /// operator, who runs it day to day.
+    /// administrators, who may do everything and are the only ones who may
+    /// change anything - the certificates included, where that matters most:
+    /// somebody who can add a root can make this gateway believe a time server
+    /// or a name server nobody else would. A gateway adds no resource of its
+    /// own yet - what it is for, handing frames on between charging stations
+    /// and whatever they talk to, is not here - and one role: the operator,
+    /// who runs it day to day.
     /// </para>
     /// <para>
     /// The configuration file may add roles to these and say differently what
@@ -60,7 +63,7 @@ namespace cloud.charging.open.Gateway
         /// <summary>
         /// Whoever runs this gateway day to day: may look at everything and ask
         /// whether the network works - but may not repoint it at other name and
-        /// time servers.
+        /// time servers, and may not change the certificates it holds them to.
         /// </summary>
         public static readonly Role  Operator  = new ("operator",
                                                       [ Permission.Read(Permission.AnyResource),

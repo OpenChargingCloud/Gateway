@@ -1,7 +1,8 @@
-import type { KnownServer, ServerJudgement } from '../api/client';
+import { api, type KnownServer, type ServerJudgement } from '../api/client';
+import { auth } from '../auth';
 import { html, must, type HTMLFragment } from '../html';
 import { formatValue } from '../ui';
-import { outcomeText, outcomeTone, pinsText, readPins, shortFingerprint, type PinsDraft, type StoreOffers } from './pins';
+import { offersOf, outcomeText, outcomeTone, pinsText, readPins, shortFingerprint, type PinsDraft, type StoreOffers } from './pins';
 
 /**
  * The certificate of a server this gateway connects to - a time server, a
@@ -45,17 +46,23 @@ export interface PinsContext {
 
 
 /**
- * What the certificate store keeps for a service: nothing, on a gateway,
- * which keeps no certificates and has no store to ask - so a fingerprint is
- * typed, or taken from what the server showed the last time it was asked.
- *
- * Asynchronous and given the service, as on a node that keeps a store, so
- * that the pages calling it read the same on both and a gateway that one day
- * keeps certificates changes this function and nothing else.
+ * What the certificate store keeps for a service, or null where the person
+ * signed in may not read it or it cannot be read - the fields are there
+ * either way, and a fingerprint can always be typed.
  */
-export async function storeOffers(_service: 'nts' | 'dns'): Promise<StoreOffers | null> {
+export async function storeOffers(service: 'nts' | 'dns'): Promise<StoreOffers | null> {
 
-    return null;
+    if (!auth.can('certificates', 'read'))
+        return null;
+
+    try
+    {
+        return offersOf(await api.certificates.get(), service);
+    }
+    catch
+    {
+        return null;
+    }
 
 }
 

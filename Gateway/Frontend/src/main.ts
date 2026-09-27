@@ -13,6 +13,7 @@ import { Router } from './router';
 import { configurationPage } from './pages/configuration';
 import { dnsPage }           from './pages/dns';
 import { ntsPage }           from './pages/nts';
+import { certificatesPage } from './pages/certificates';
 import { loginPage }         from './pages/login';
 import { logsPage }          from './pages/logs';
 import { notFoundPage }      from './pages/notFound';
@@ -36,6 +37,7 @@ const router = new Router({
         { path: '/configuration',        page: configurationPage,  guard: auth.requireSignIn },
         { path: '/configuration/dns',     page: dnsPage,           guard: auth.requireSignIn },
         { path: '/configuration/nts',     page: ntsPage,           guard: auth.requireSignIn },
+        { path: '/configuration/certificates', page: certificatesPage, guard: auth.requireSignIn },
         { path: '/logs',                 page: logsPage,           guard: auth.requireSignIn },
         { path: '/login',                page: loginPage }
     ],

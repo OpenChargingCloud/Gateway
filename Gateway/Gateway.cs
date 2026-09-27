@@ -27,6 +27,7 @@ using org.GraphDefined.Vanaheimr.Norn.NTS;
 
 using cloud.charging.open.protocols.WWCP.Node;
 using cloud.charging.open.protocols.WWCP.Node.Logging;
+using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 
 #endregion
@@ -48,9 +49,10 @@ namespace cloud.charging.open.Gateway
     /// What a gateway is for - taking WebSocket frames from one side and
     /// handing them on to the other - is not here yet. What is here is what
     /// every program of this family has before it does anything of its own -
-    /// the sign-in, the name servers, the time servers and the log - and that
-    /// is the node below, which the gateway shares with the vehicle. What is
-    /// the gateway's own is its names, its port, its roles and its JSON API.
+    /// the sign-in, the name servers, the time servers, the certificates they
+    /// are held to and the log - and that is the node below, which the gateway
+    /// shares with the vehicle. What is the gateway's own is its names, its
+    /// port, its roles, the kinds of certificate it keeps and its JSON API.
     /// </remarks>
     public class Gateway : WWCPNode
     {
@@ -95,6 +97,20 @@ namespace cloud.charging.open.Gateway
                                                                      LogFilePrefix:  "gateway"
                                                                  );
 
+        /// <summary>
+        /// The kinds of certificate a gateway keeps: the four of TLS, and none
+        /// of the seven of ISO 15118, which are a vehicle's.
+        /// </summary>
+        /// <remarks>
+        /// The roots a time server or a name server of this gateway may chain
+        /// to where the machine knows no root of theirs, and the certificates
+        /// they present, kept to hold them to by their fingerprints - and, for
+        /// when the gateway speaks TLS itself, what it presents and what the
+        /// clients connecting to it will have to chain to. A kind that is not
+        /// here has no directory in the store, and an import of one is refused.
+        /// </remarks>
+        public static readonly      IReadOnlyList<CertificateKind>  CertificateKinds  = CertificateKindExtensions.TLS;
+
         #endregion
 
         #region Properties
@@ -122,6 +138,7 @@ namespace cloud.charging.open.Gateway
         /// <param name="DNSClient">How to resolve names, or null to make a client.</param>
         /// <param name="NTSClient">Where to read the time, or null to make a client.</param>
         /// <param name="Frontend">Where the web interface comes from, or null for the embedded bundle.</param>
+        /// <param name="CertificatesPath">The directory the certificate store lives in between starts; what the configuration file says, or "certificates" beside it, by default.</param>
         /// <param name="Log">Where everything that happens is written, or null to make a log.</param>
         /// <param name="LogToConsole">Whether the log is also written to the console.</param>
         /// <param name="ConsoleLogLevel">How much of it reaches the console.</param>
@@ -139,6 +156,7 @@ namespace cloud.charging.open.Gateway
                        DNSClient?             DNSClient          = null,
                        NTSClient?             NTSClient          = null,
                        IStaticContentSource?  Frontend           = null,
+                       String?                CertificatesPath   = null,
                        EventLog?              Log                = null,
                        Boolean                LogToConsole       = true,
                        LogLevel               ConsoleLogLevel    = LogLevel.Info,
@@ -157,17 +175,12 @@ namespace cloud.charging.open.Gateway
                    AccountsPath:       AccountsPath,
                    Resources:          GatewayAccess.Resources,
                    RoleDefinitions:    GatewayAccess.Roles,
-
-                   // None: a gateway presents no certificate and believes none
-                   // of its own, so the node below keeps no store for it - no
-                   // directory beside the configuration file, and no line
-                   // about an empty one at every start.
-                   CertificateKinds:   [],
-
                    ConfigFile:         ConfigFile,
                    DNSClient:          DNSClient,
                    NTSClient:          NTSClient,
                    Frontend:           Frontend ?? new EmbeddedContentSource(HTTPRoot, typeof(Gateway).Assembly),
+                   CertificatesPath:   CertificatesPath,
+                   CertificateKinds:   CertificateKinds,
                    Log:                Log,
                    LogToConsole:       LogToConsole,
                    ConsoleLogLevel:    ConsoleLogLevel,
@@ -272,6 +285,83 @@ namespace cloud.charging.open.Gateway
                      )));
 
             return json;
+
+        }
+
+        #endregion
+
+        #region CertificatesJSON()
+
+        /// <summary>
+        /// Everything in this gateway's certificate store, grouped the way the
+        /// Certificates page shows it.
+        /// </summary>
+        /// <remarks>
+        /// Groups and not one list. The roots are what this gateway
+        /// <i>believes</i>, and any number of each kind may be on at once. The
+        /// TLS identity is what it <i>presents</i>. The server certificates are
+        /// neither: what it <i>recognises</i>, kept for a time server or a name
+        /// server to be held to by its fingerprint. A page that put them in one
+        /// table would have to explain that difference in a column heading.
+        ///
+        /// No certificate is chosen here, as a vehicle chooses one per session:
+        /// nothing a gateway does yet names one.
+        /// </remarks>
+        public JObject CertificatesJSON()
+        {
+
+            // The kinds this store keeps, which for a gateway are the four of
+            // TLS: a page offering a kind the store refuses would be offering
+            // a refusal.
+            var kinds  = Certificates.Kinds;
+            var byKind = new JObject();
+
+            foreach (var kind in kinds)
+                byKind.Add(kind.AsText(),
+                           new JArray(Certificates.ByKind(kind).Select(entry => entry.ToJSON(WithDiagnostics: true))));
+
+            return new JObject(
+
+                       new JProperty("directory",    Certificates.Directory),
+
+                       new JProperty("trustAnchors", new JArray(
+                           kinds.Where(kind =>  kind.IsTrustAnchor()).Select(kind => kind.AsText())
+                       )),
+
+                       new JProperty("credentials",  new JArray(
+                           kinds.Where(kind => !kind.IsTrustAnchor() && !kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
+                       )),
+
+                       // Neither believed nor presented, and never with a key: a
+                       // server certificate, kept to recognise a server by.
+                       // Shown among what the gateway presents, it would read as
+                       // something the gateway presents.
+                       new JProperty("recognised",   new JArray(
+                           kinds.Where(kind => !kind.IsTrustAnchor() &&  kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
+                       )),
+
+                       new JProperty("kinds",        new JObject(
+                           kinds.Select(kind =>
+                               new JProperty(kind.AsText(), new JObject(
+                                   new JProperty("description",     kind.Describe()),
+                                   new JProperty("trustAnchor",     kind.IsTrustAnchor()),
+                                   new JProperty("needsPrivateKey", kind.NeedsPrivateKey()),
+                                   new JProperty("hasUsages",       kind.HasUsages())
+                               )))
+                       )),
+
+                       // What a TLS root or a server certificate may be told it is
+                       // for, so that a page offers these and nothing the store
+                       // would refuse.
+                       new JProperty("usages",       new JArray(Certificates.Usages)),
+
+                       new JProperty("certificates", byKind),
+
+                       // Said here because this is the page where somebody is looking at the
+                       // consequences of it, rather than only in the log at a start.
+                       new JProperty("keysAreUnencrypted", Certificates.Entries.Any(entry => entry.HasPrivateKey))
+
+                   );
 
         }
 
