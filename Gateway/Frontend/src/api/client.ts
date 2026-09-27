@@ -34,16 +34,27 @@ export interface LogPage {
 }
 
 /**
- * What somebody signed in to this gateway may do.
+ * What a role may be allowed to touch on this gateway: what every node has,
+ * for a gateway adds nothing of its own yet. "certificates" among them
+ * although a gateway keeps none, because the node spells it out like the
+ * others for a role that may touch everything.
+ */
+export type Resource = 'configuration' | 'dns' | 'nts' | 'certificates';
+
+/** How a resource may be touched. */
+export type Operation = 'read' | 'edit' | 'run';
+
+/**
+ * What somebody signed in to this gateway may do: an operation on a resource,
+ * written "dns:edit".
  *
  * A copy of what the gateway enforces, not the enforcement: it is here so a
  * page can grey out what this person may not do instead of offering it and
  * letting them find out by being refused. Every request is checked again on
  * arrival, so editing this list in a browser buys a button that answers 403.
+ * Spelt out resource by resource by the gateway, so "*" never arrives here.
  */
-export type Permission = 'readConfiguration'
-                       | 'changeNetworkSettings'
-                       | 'runDiagnostics';
+export type Permission = `${Resource}:${Operation}`;
 
 /** Who is signed in to the web interface. */
 export interface Me {
@@ -80,13 +91,150 @@ export interface Configuration {
 }
 
 
-/** One name server this gateway asks. */
-export interface DNSServer {
+/**
+ * The kinds of certificate a node's store keeps, as the node names them.
+ *
+ * A gateway keeps no certificates, has no route for a store and never asks
+ * for one. The three types here are the shape of a node's store as far as the
+ * pins module reads offers out of it - the module the gateway's pages share
+ * with the vehicle's, which do keep one.
+ */
+export type CertificateKind = 'v2gRoot' | 'moRoot' | 'oemRoot'
+                            | 'vehicle' | 'contract' | 'oemProvisioning' | 'tariffVerification'
+                            | 'tlsRoot' | 'clientRoot' | 'tlsServer' | 'tlsIdentity';
+
+/** One certificate of a node's store. */
+export interface Certificate {
+    /** The handle it is addressed by: the first 16 digits of its fingerprint. */
+    id:             string;
+    kind:           CertificateKind;
+    fileName:       string;
+    label:          string;
+    subject:        string;
+    issuer:         string;
+    serialNumber:   string;
+    /** Its SHA-256 fingerprint in full, for comparing against what a CA said. */
+    thumbprint:     string;
+    notBefore:      string;
+    notAfter:       string;
+    keyAlgorithm:   string;
+    hasPrivateKey:  boolean;
+    /** How many further certificates travel with it, e.g. its sub-CAs. */
+    chainLength:    number;
+    /** Whether the node is using it. Somebody switches this; time does not. */
+    active:         boolean;
+    importedAt:     string;
+    expired:        boolean;
+    notYetValid:    boolean;
+    /** Active, and inside its own validity. */
+    usable:         boolean;
+    description:    string;
+    /**
+     * What it may be used for - "dns", "nts" - where its kind is kept for
+     * some uses and not others, and null there for every use. Left out for
+     * every other kind, which is for what its kind says.
+     */
+    usages?:        string[] | null;
+}
+
+/** A node's store, as far as offers for a server's pins are read out of it. */
+export interface CertificateStore {
+    certificates:  Record<CertificateKind, Certificate[]>;
+}
+
+
+/** What a certificate other than the one a server is held to comes to. */
+export type PinMismatch = 'refuse' | 'record' | 'accept';
+
+/** What a server is held to from the first time it is believed. */
+export type TrustOnFirstUse = 'root' | 'certificate';
+
+/**
+ * What one server is held to beyond what every server is held to, as the
+ * gateway reads it back: the certificates it may show and the roots its chain
+ * may end at - any one of them - what a mismatch comes to, and what it learns
+ * the first time it is believed. Every fingerprint is a SHA-256 one, in the
+ * 64 lower-case digits the gateway keeps.
+ */
+export interface ServerPins {
+    /** The first certificate and root once more, as they were read when there could be only one of each. */
+    certificate:      string | null;
+    root:             string | null;
+    certificates:     string[];
+    roots:            string[];
+    onMismatch:       PinMismatch;
+    trustOnFirstUse:  TrustOnFirstUse | null;
+}
+
+/**
+ * What a server is held to, in the keys its entry is written with: one of a
+ * kind under the singular key, several under the plural - the way the
+ * configuration file says it, and the way the gateway takes it back.
+ */
+export interface PinKeys {
+    certificateFingerprint?:   string;
+    certificateFingerprints?:  string[];
+    rootFingerprint?:          string;
+    rootFingerprints?:         string[];
+    onMismatch?:               PinMismatch;
+    trustOnFirstUse?:          TrustOnFirstUse;
+}
+
+/** What a server was last believed with - pinned or not, another one is noticed. */
+export interface KnownServer {
+    certificate:  string;
+    root:         string | null;
+    since:        string;
+}
+
+/** What the gateway made of a server's certificate, in one word. */
+export type JudgementOutcome = 'accepted' | 'recorded' | 'tolerated'
+                             | 'pinMismatch' | 'untrusted' | 'wrongName' | 'noCertificate';
+
+/** What the gateway made of the certificate a server showed, the last time it showed one. */
+export interface ServerJudgement {
+    server:       string;
+    service:      string;
+    at:           string;
+    /** Whether the server was used: "recorded" and "tolerated" are, although a fingerprint did not match. */
+    accepted:     boolean;
+    outcome:      JudgementOutcome;
+    certificate:  string | null;
+    root:         string | null;
+    /** The gateway's own root it was validated by, where this machine knows none. */
+    anchoredBy:   string | null;
+    heldTo:       Pick<ServerPins, 'certificate' | 'root' | 'certificates' | 'roots'> | null;
+    /** What it was held to from this connection on, trusted on first use. */
+    learned:      TrustOnFirstUse | null;
+    /** What it had been believed with before, where this was another certificate. */
+    previously:   KnownServer | null;
+    /** Only in the answer to a test: what was found, one step after another. */
+    steps?:       { level: 'info' | 'notice' | 'warning' | 'error'; text: string }[];
+}
+
+
+/**
+ * One name server as the gateway is told it: what its configuration keeps,
+ * with what it is held to where it is asked over TLS or HTTPS.
+ */
+export interface DNSServerEntry extends PinKeys {
     /** An IP address or a host name. */
     address:              string;
     port:                 number;
     transport:            string;
     queryTimeoutSeconds:  number | null;
+}
+
+/**
+ * One name server this gateway asks, and what the gateway says about it: what
+ * it is held to once more, the way the NTS answer has it, what was made of its
+ * certificate last, and what it was last believed with. Those three are read
+ * and never sent back.
+ */
+export interface DNSServer extends DNSServerEntry {
+    heldTo?:     ServerPins | null;
+    judgement?:  ServerJudgement | null;
+    known?:      KnownServer | null;
 }
 
 /** What may be changed about the name resolution while the gateway runs. */
@@ -120,7 +268,7 @@ export interface DNSConfiguration {
 /** What a PUT to the DNS configuration may carry; everything is optional. */
 export interface DNSUpdate {
     enabled?:              boolean;
-    servers?:              DNSServer[];
+    servers?:              DNSServerEntry[];
     queryTimeoutSeconds?:  number;
     recursionDesired?:     boolean | null;
     useCache?:             boolean;
@@ -157,6 +305,8 @@ export interface DNSQueryResult {
     timedOut?:      boolean;
     answers:        DNSRecord[];
     more?:          number;
+    /** What was made of the certificate of every server this asked over TLS or HTTPS, step by step. */
+    certificates?:  ServerJudgement[];
 }
 
 
@@ -191,9 +341,9 @@ export interface NTSUpdate {
 
 /**
  * One time server as the configuration names it. Whatever is left out is the
- * usual: priority 0, the usual ports, switched on.
+ * usual: priority 0, the usual ports, switched on, held to no fingerprint.
  */
-export interface NTSServerEntry {
+export interface NTSServerEntry extends PinKeys {
     hostname:    string;
     priority?:   number;
     ntsKEPort?:  number;
@@ -257,6 +407,12 @@ export interface NTSTimeSource {
      * or null before the first exchange.
      */
     rootCA?:        NTSRootCA | null;
+
+    /** The SHA-256 fingerprint of the certificate the last key exchange showed, which a pin is written down from. */
+    certificate?:   string | null;
+    heldTo?:        ServerPins | null;
+    judgement?:     ServerJudgement | null;
+    known?:         KnownServer | null;
 }
 
 /** A root CA, by a name to call it, its subject, and its SHA-256 fingerprint. */
@@ -390,13 +546,10 @@ export const answerWithin = 15_000;
 export const actWithin = 30_000;
 
 /**
- * How long a question the gateway has to put to somebody else may take.
- *
- * The gateway tries its name servers in turn, so the longest a lookup can
- * honestly take is one timeout per server: two servers at three seconds each
- * was measured at 6.2 seconds. The page waits for all of them and the usual
- * allowance on top, so that what it gives up on is silence from the gateway
- * rather than patience the gateway was told to have.
+ * How long a question the gateway has to put to somebody else may take: the
+ * timeouts of the steps it takes one after another, added up, and the usual
+ * allowance on top - so that what the page gives up on is silence from the
+ * gateway rather than patience it was told to have.
  */
 export function afterAsking(Timeouts: number[]): number {
     return Timeouts.reduce((total, seconds) => total + seconds * 1000, 0) + answerWithin;
@@ -624,18 +777,16 @@ export const api = {
         /**
          * Make the gateway look a name up. A POST because it sends traffic.
          *
-         * @param timeouts  what each name server is allowed, in seconds: the
-         *                  gateway tries them in turn, so their sum is the
-         *                  longest this can honestly take.
+         * @param seconds  how long the name servers asked may take - see
+         *                 pages/dnsServers.ts.
+         * @param server   which configured name server to ask, by its place in
+         *                 the list - or undefined to resolve the way the
+         *                 gateway resolves anything else, asking all of them
+         *                 at once.
          */
-        /**
-         * @param server  which configured name server to ask, by its place in
-         *                the list - or undefined to resolve the way the gateway
-         *                resolves anything else, trying them in turn.
-         */
-        query: (name: string, recordTypes: string[], timeouts: number[], server?: number) =>
+        query: (name: string, recordTypes: string[], seconds: number, server?: number) =>
                    request<DNSQueryResult>('POST', '/configuration/dns/query', { name, recordTypes, server },
-                                           afterAsking(timeouts))
+                                           afterAsking([ seconds ]))
     },
 
     nts: {

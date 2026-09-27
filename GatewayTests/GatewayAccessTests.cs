@@ -1,0 +1,349 @@
+/*
+ * Copyright (c) 2014-2026 GraphDefined GmbH <achim.friedland@graphdefined.com>
+ * This file is part of Gateway <https://github.com/OpenChargingCloud/Gateway>
+ *
+ * Licensed under the Affero GPL license, Version 3.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.gnu.org/licenses/agpl.html
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#region Usings
+
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Text;
+
+using Newtonsoft.Json.Linq;
+
+using NUnit.Framework;
+
+using org.GraphDefined.Vanaheimr.Illias;
+using org.GraphDefined.Vanaheimr.Hermod;
+using org.GraphDefined.Vanaheimr.Hermod.HTTP;
+using org.GraphDefined.Vanaheimr.Hermod.Mail;
+
+using cloud.charging.open.protocols.WWCP.Node;
+using cloud.charging.open.protocols.WWCP.Node.Web;
+using cloud.charging.open.protocols.WWCP.Node.Configuration;
+
+#endregion
+
+namespace cloud.charging.open.Gateway.Tests
+{
+
+    /// <summary>
+    /// Who may do what on a gateway: the node's resources and no others, its
+    /// operator beside the node's viewer and administrators - and a role from
+    /// the configuration file, heard by the API like every other.
+    /// </summary>
+    public class GatewayAccessTests
+    {
+
+        #region Data
+
+        private const String  NoTimeServers  = """{ "nts": { "enabled": false } }""";
+
+        private String   directory  = "";
+        private Gateway? gateway;
+        private Uri?     address;
+
+        #endregion
+
+        #region Setup / TearDown
+
+        [SetUp]
+        public void Setup()
+        {
+
+            directory = Path.Combine(Path.GetTempPath(), "gateway-access-" + Guid.NewGuid().ToString("N")[..12]);
+
+            Directory.CreateDirectory(directory);
+
+        }
+
+        [TearDown]
+        public async Task TearDown()
+        {
+
+            if (gateway is not null)
+                await gateway.DisposeAsync();
+
+            try
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
+            catch (Exception)
+            {
+                // A temporary directory that outlives one test run is not worth
+                // failing the run over.
+            }
+
+        }
+
+        #endregion
+
+
+        #region (helper) GatewayFrom(Configuration)
+
+        /// <summary>
+        /// A gateway with the given configuration file, on a free port of the
+        /// loopback - made, and not yet started.
+        /// </summary>
+        private Gateway GatewayFrom(String Configuration = NoTimeServers)
+        {
+
+            var probe  = new TcpListener(System.Net.IPAddress.Loopback, 0);
+            probe.Start();
+            var port   = ((IPEndPoint) probe.LocalEndpoint).Port;
+            probe.Stop();
+
+            var file   = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
+            File.WriteAllText(file, Configuration);
+
+            gateway    = new Gateway(
+                             HTTPPort:        IPPort.Parse(port),
+                             AccountsPath:    Path.Combine(directory, "accounts"),
+                             ConfigFile:      new WWCPConfigFile(file),
+                             LogToConsole:    false,
+                             BridgeDebugLog:  false
+                         );
+
+            address    = new Uri($"http://127.0.0.1:{port}/");
+
+            return gateway;
+
+        }
+
+        #endregion
+
+        #region (helper) SignedInAs(Name, Role)
+
+        /// <summary>
+        /// A client signed in with a password as an account of the given name,
+        /// made for the purpose and put in the group of the given role - made
+        /// the way the gateway makes its first one, so that it may sign in.
+        /// </summary>
+        private async Task<HttpClient> SignedInAs(String  Name,
+                                                  String  Role)
+        {
+
+            var password = "correct-horse-battery-" + Guid.NewGuid().ToString("N")[..8];
+
+            Assert.That(gateway!.ExtAPI.TryGetOrganization(Organization_Id.Parse("Gateway"), out var organization) &&
+                        organization is Organization, Is.True, "the gateway's organization is not there");
+
+            var account = await gateway.ExtAPI.CreateUser(
+                                    User_Id.Parse(Name),
+                                    I18NString.Create(Languages.en, Name),
+                                    SimpleEMailAddress.Parse($"{Name}@localhost"),
+                                    User2OrganizationEdgeLabel.IsMember,
+                                    (Organization) organization!,
+                                    Password:                  password,
+                                    SkipDefaultNotifications:  true,
+                                    SkipNewUserEMail:          true,
+                                    SkipNewUserNotifications:  true,
+                                    AcceptedEULA:              DateTimeOffset.UtcNow.AddSeconds(-1),
+                                    IsAuthenticated:           true
+                                );
+
+            Assert.That(account,                                                                  Is.Not.Null, $"the account '{Name}' was not made");
+            Assert.That(gateway.ExtAPI.TryGetUser(User_Id.Parse(Name), out var stored),           Is.True);
+            Assert.That(gateway.ExtAPI.TryGetUserGroup(UserGroup_Id.Parse(Role), out var group),  Is.True, $"the gateway has no group '{Role}'");
+
+            var joined = await gateway.ExtAPI.AddUserToUserGroup((User) stored!, User2UserGroupEdgeLabel.IsMember, (UserGroup) group!);
+
+            Assert.That(joined.IsSuccess, Is.True, $"'{Name}' could not be put in '{Role}'");
+
+            var client = new HttpClient {
+                             BaseAddress  = address,
+                             Timeout      = TimeSpan.FromSeconds(30)
+                         };
+
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                                                             "Basic",
+                                                             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Name}:{password}"))
+                                                         );
+
+            return client;
+
+        }
+
+        #endregion
+
+        #region (helper) Put(Client, Path, JSON)
+
+        private static Task<HttpResponseMessage> Put(HttpClient  Client,
+                                                     String      Path,
+                                                     String      JSON)
+
+            => Client.PutAsync(Path, new StringContent(JSON, Encoding.UTF8, "application/json"));
+
+        #endregion
+
+        #region (helper) GatewayAccessControl()
+
+        /// <summary>
+        /// The gateway's resources and roles, as a node told nothing else puts
+        /// them together.
+        /// </summary>
+        private static AccessControl GatewayAccessControl()
+        {
+
+            Assert.That(AccessControl.TryCombine(GatewayAccess.Resources, GatewayAccess.Roles, null, null,
+                                                 "gateway", out var access, out _, out var error),
+                        Is.True, error);
+
+            return access!;
+
+        }
+
+        #endregion
+
+
+        #region AGatewayKnowsTheNodesResourcesAndItsThreeRoles()
+
+        /// <summary>
+        /// The node brings the viewer and the administrators, and the gateway
+        /// its operator - and nothing of its own to be allowed, beside what
+        /// every node has.
+        /// </summary>
+        [Test]
+        public void AGatewayKnowsTheNodesResourcesAndItsThreeRoles()
+        {
+
+            var node = GatewayFrom();
+
+            Assert.Multiple(() => {
+                Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "operator", WWCPNode.AdminRole }));
+                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates" }));
+            });
+
+        }
+
+        #endregion
+
+        #region EachRoleMayDoWhatItAlwaysMayDo(Role, Permission, Allowed)
+
+        /// <summary>
+        /// What each role could do before roles were data, permission by
+        /// permission: the viewer looks, the operator also asks the name and
+        /// time servers, and only the administrators repoint them - or would
+        /// touch certificates, where a gateway had any.
+        /// </summary>
+        [TestCase("viewer",       "configuration:read",  true)]
+        [TestCase("viewer",       "dns:read",            true)]
+        [TestCase("viewer",       "nts:read",            true)]
+        [TestCase("viewer",       "dns:edit",            false)]
+        [TestCase("viewer",       "dns:run",             false)]
+        [TestCase("viewer",       "nts:run",             false)]
+
+        [TestCase("operator",     "configuration:read",  true)]
+        [TestCase("operator",     "dns:read",            true)]
+        [TestCase("operator",     "dns:run",             true)]
+        [TestCase("operator",     "nts:run",             true)]
+        [TestCase("operator",     "dns:edit",            false)]
+        [TestCase("operator",     "nts:edit",            false)]
+        [TestCase("operator",     "certificates:edit",   false)]
+
+        [TestCase("systemadmin",  "dns:edit",            true)]
+        [TestCase("systemadmin",  "nts:edit",            true)]
+        [TestCase("systemadmin",  "nts:run",             true)]
+        [TestCase("systemadmin",  "certificates:edit",   true)]
+        public void EachRoleMayDoWhatItAlwaysMayDo(String Role, String Permission, Boolean Allowed)
+        {
+
+            Assert.That(protocols.WWCP.Node.Web.Permission.TryParse(Permission, out var permission, out var error), Is.True, error);
+
+            Assert.That(GatewayAccessControl().RoleNamed(Role)!.Allows(permission.Resource, permission.Operation), Is.EqualTo(Allowed));
+
+        }
+
+        #endregion
+
+
+        #region AnOperatorMayLookAtTheDNSSettingsAndIsToldWhoMayChangeThem()
+
+        /// <summary>
+        /// Over the wire, as a browser signed in as an operator sees it: the
+        /// page opens, the save is refused with the role to ask for, and what
+        /// the browser is told it may do says the same beforehand.
+        /// </summary>
+        [Test]
+        public async Task AnOperatorMayLookAtTheDNSSettingsAndIsToldWhoMayChangeThem()
+        {
+
+            await GatewayFrom().Start();
+
+            using var @operator  = await SignedInAs("operator1", "operator");
+
+            var looked           = await @operator.GetAsync("api/v1/configuration/dns");
+            var changed          = await Put(@operator, "api/v1/configuration/dns", "{}");
+            var refusal          = await changed.Content.ReadAsStringAsync();
+            var me               = JObject.Parse(await (await @operator.GetAsync("api/v1/auth/me")).Content.ReadAsStringAsync());
+            var permissions      = me["permissions"]!.Values<String>().OfType<String>().ToArray();
+
+            Assert.Multiple(() => {
+                Assert.That(looked.StatusCode,               Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(changed.StatusCode,              Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(refusal,                         Does.Contain("This needs the systemadmin role."));
+                Assert.That(me["roles"]!.Values<String>(),   Is.EqualTo(new[] { "operator" }));
+                Assert.That(permissions,                     Does.Contain("dns:run").And.Contain("nts:run").And.Contain("dns:read"));
+                Assert.That(permissions,                     Does.Not.Contain("dns:edit").And.Not.Contain("nts:edit").And.Not.Contain("certificates:edit"));
+                Assert.That(permissions.Any(permission => permission.StartsWith('*')),
+                            Is.False,
+                            "spelt out resource by resource, so that a page asking \"dns:read\" need not know what \"*\" is");
+            });
+
+        }
+
+        #endregion
+
+        #region ARoleFromTheConfigurationFileIsHeardByTheAPI()
+
+        /// <summary>
+        /// A role nobody compiled in: the file names it, the start makes its
+        /// group, and a route asking for a permission lets it in or not by what
+        /// the file says it carries.
+        /// </summary>
+        [Test]
+        public async Task ARoleFromTheConfigurationFileIsHeardByTheAPI()
+        {
+
+            await GatewayFrom("""
+                              {
+                                "nts":   { "enabled": false },
+                                "roles": { "support": [ "dns:read" ] }
+                              }
+                              """).Start();
+
+            using var support  = await SignedInAs("supporter", "support");
+
+            var dns            = await support.GetAsync("api/v1/configuration/dns");
+            var nts            = await support.GetAsync("api/v1/configuration/nts");
+            var refusal        = await nts.Content.ReadAsStringAsync();
+
+            Assert.Multiple(() => {
+                Assert.That(gateway!.Roles,    Is.EqualTo(new[] { "viewer", "operator", "support", WWCPNode.AdminRole }));
+                Assert.That(dns.StatusCode,    Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(nts.StatusCode,    Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(refusal,           Does.Contain("This needs the viewer or operator or systemadmin role."),
+                            "the file's role carries dns:read and nothing else, so it is not among the ones to ask for");
+            });
+
+        }
+
+        #endregion
+
+    }
+
+}

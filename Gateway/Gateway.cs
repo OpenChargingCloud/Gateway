@@ -24,7 +24,6 @@ using org.GraphDefined.Vanaheimr.Hermod.DNS;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Norn.NTS;
 
-using cloud.charging.open.Gateway.Web;
 
 using cloud.charging.open.protocols.WWCP.Node;
 using cloud.charging.open.protocols.WWCP.Node.Logging;
@@ -147,33 +146,34 @@ namespace cloud.charging.open.Gateway
                        Boolean                BridgeDebugLog     = true,
                        TimeProvider?          TimeProvider       = null)
 
-            : base(Kind:              GatewayKind,
-                   Version:           typeof(Gateway).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
-                   Roles:             GatewayRoles.All.Select(role => role.Name),
+            : base(Kind:               GatewayKind,
+                   Version:            typeof(Gateway).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+                   HTTPPort:           HTTPPort ?? DefaultHTTPPort,
+                   HTTPHostname:       HTTPHostname,
+                   HTTPServer:         HTTPServer,
+                   BasePath:           BasePath,
+                   HTTPRootPath:       HTTPRootPath,
+                   ExtAPI:             ExtAPI,
+                   AccountsPath:       AccountsPath,
+                   Resources:          GatewayAccess.Resources,
+                   RoleDefinitions:    GatewayAccess.Roles,
 
                    // None: a gateway presents no certificate and believes none
                    // of its own, so the node below keeps no store for it - no
                    // directory beside the configuration file, and no line
                    // about an empty one at every start.
-                   CertificateKinds:  [],
+                   CertificateKinds:   [],
 
-                   HTTPPort:          HTTPPort ?? DefaultHTTPPort,
-                   HTTPHostname:      HTTPHostname,
-                   HTTPServer:        HTTPServer,
-                   BasePath:          BasePath,
-                   HTTPRootPath:      HTTPRootPath,
-                   ExtAPI:            ExtAPI,
-                   AccountsPath:      AccountsPath,
-                   ConfigFile:        ConfigFile,
-                   DNSClient:         DNSClient,
-                   NTSClient:         NTSClient,
-                   Frontend:          Frontend ?? new EmbeddedContentSource(HTTPRoot, typeof(Gateway).Assembly),
-                   Log:               Log,
-                   LogToConsole:      LogToConsole,
-                   ConsoleLogLevel:   ConsoleLogLevel,
-                   LogPath:           LogPath,
-                   BridgeDebugLog:    BridgeDebugLog,
-                   TimeProvider:      TimeProvider)
+                   ConfigFile:         ConfigFile,
+                   DNSClient:          DNSClient,
+                   NTSClient:          NTSClient,
+                   Frontend:           Frontend ?? new EmbeddedContentSource(HTTPRoot, typeof(Gateway).Assembly),
+                   Log:                Log,
+                   LogToConsole:       LogToConsole,
+                   ConsoleLogLevel:    ConsoleLogLevel,
+                   LogPath:            LogPath,
+                   BridgeDebugLog:     BridgeDebugLog,
+                   TimeProvider:       TimeProvider)
 
         {
 
