@@ -340,25 +340,25 @@ namespace cloud.charging.open.Gateway
                            kinds.Where(kind => !kind.IsTrustAnchor() &&  kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
                        )),
 
-                       // Whether one of a kind is told what it is for is the
-                       // store's to say, not the kind's: a TLS identity may be
-                       // told the listeners it is shown on only where the kind
-                       // of node names some, and a gateway names none - so a
-                       // page offering it the name servers and the time servers
-                       // would be offering a refusal.
                        new JProperty("kinds",        new JObject(
                            kinds.Select(kind =>
                                new JProperty(kind.AsText(), new JObject(
                                    new JProperty("description",     kind.Describe()),
                                    new JProperty("trustAnchor",     kind.IsTrustAnchor()),
                                    new JProperty("needsPrivateKey", kind.NeedsPrivateKey()),
-                                   new JProperty("hasUsages",       Certificates.HasUsages(kind))
+                                   // Whether one of the kind is told what it is for
+                                   // in this store, and what it may be told - the
+                                   // store's word and not the kind's: a TLS identity
+                                   // is told the listeners a kind of node names, and
+                                   // a gateway names none, so it is told nothing.
+                                   new JProperty("hasUsages",       Certificates.HasUsages(kind)),
+                                   new JProperty("usages",          new JArray(Certificates.UsagesFor(kind)))
                                )))
                        )),
 
                        // What a TLS root or a server certificate may be told it is
-                       // for, so that a page offers these and nothing the store
-                       // would refuse.
+                       // for - the services it vouches for - as it was said before
+                       // every kind said its own above.
                        new JProperty("usages",       new JArray(Certificates.Usages)),
 
                        new JProperty("certificates", byKind),

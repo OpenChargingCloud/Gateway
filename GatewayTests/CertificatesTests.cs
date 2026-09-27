@@ -219,6 +219,10 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(store["kinds"]!["clientRoot"]!["hasUsages"]!.Value<Boolean>(),  Is.False);
                 Assert.That(store["kinds"]!["tlsIdentity"]!["hasUsages"]!.Value<Boolean>(), Is.False,
                             "a gateway names no listener an identity could be told of, so a page offers it none");
+                Assert.That(store["kinds"]!["tlsRoot"]!["usages"]!.Values<String>(),        Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer a root");
+                Assert.That(store["kinds"]!["tlsServer"]!["usages"]!.Values<String>(),      Is.EqualTo(new[] { "dns", "nts" }));
+                Assert.That(store["kinds"]!["tlsIdentity"]!["usages"]!.Children().Any(),    Is.False, "not the services a root vouches for");
+                Assert.That(store["kinds"]!["clientRoot"]!["usages"]!.Children().Any(),     Is.False);
                 Assert.That(store["certificates"]!["tlsRoot"]![0]!["usages"]!.Values<String>(),  Is.EqualTo(new[] { "nts" }));
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                        Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
