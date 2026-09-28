@@ -50,9 +50,10 @@ namespace cloud.charging.open.Gateway
     /// handing them on to the other - is not here yet. What is here is what
     /// every program of this family has before it does anything of its own -
     /// the sign-in, the name servers, the time servers, the certificates they
-    /// are held to and the log - and that is the node below, which the gateway
-    /// shares with the vehicle. What is the gateway's own is its names, its
-    /// port, its roles, the kinds of certificate it keeps and its JSON API.
+    /// are held to and the log, and the JSON API that serves them - and that is
+    /// the node below, which the gateway shares with the vehicle. What is the
+    /// gateway's own is its names, its port, its roles and the kinds of
+    /// certificate it keeps; its JSON API adds nothing to the node's yet.
     /// </remarks>
     public class Gateway : WWCPNode
     {
@@ -285,89 +286,6 @@ namespace cloud.charging.open.Gateway
                      )));
 
             return json;
-
-        }
-
-        #endregion
-
-        #region CertificatesJSON()
-
-        /// <summary>
-        /// Everything in this gateway's certificate store, grouped the way the
-        /// Certificates page shows it.
-        /// </summary>
-        /// <remarks>
-        /// Groups and not one list. The roots are what this gateway
-        /// <i>believes</i>, and any number of each kind may be on at once. The
-        /// TLS identity is what it <i>presents</i>. The server certificates are
-        /// neither: what it <i>recognises</i>, kept for a time server or a name
-        /// server to be held to by its fingerprint. A page that put them in one
-        /// table would have to explain that difference in a column heading.
-        ///
-        /// No certificate is chosen here, as a vehicle chooses one per session:
-        /// nothing a gateway does yet names one.
-        /// </remarks>
-        public JObject CertificatesJSON()
-        {
-
-            // The kinds this store keeps, which for a gateway are the four of
-            // TLS: a page offering a kind the store refuses would be offering
-            // a refusal.
-            var kinds  = Certificates.Kinds;
-            var byKind = new JObject();
-
-            foreach (var kind in kinds)
-                byKind.Add(kind.AsText(),
-                           new JArray(Certificates.ByKind(kind).Select(entry => entry.ToJSON(WithDiagnostics: true))));
-
-            return new JObject(
-
-                       new JProperty("directory",    Certificates.Directory),
-
-                       new JProperty("trustAnchors", new JArray(
-                           kinds.Where(kind =>  kind.IsTrustAnchor()).Select(kind => kind.AsText())
-                       )),
-
-                       new JProperty("credentials",  new JArray(
-                           kinds.Where(kind => !kind.IsTrustAnchor() && !kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
-                       )),
-
-                       // Neither believed nor presented, and never with a key: a
-                       // server certificate, kept to recognise a server by.
-                       // Shown among what the gateway presents, it would read as
-                       // something the gateway presents.
-                       new JProperty("recognised",   new JArray(
-                           kinds.Where(kind => !kind.IsTrustAnchor() &&  kind.MustNotCarryPrivateKey()).Select(kind => kind.AsText())
-                       )),
-
-                       new JProperty("kinds",        new JObject(
-                           kinds.Select(kind =>
-                               new JProperty(kind.AsText(), new JObject(
-                                   new JProperty("description",     kind.Describe()),
-                                   new JProperty("trustAnchor",     kind.IsTrustAnchor()),
-                                   new JProperty("needsPrivateKey", kind.NeedsPrivateKey()),
-                                   // Whether one of the kind is told what it is for
-                                   // in this store, and what it may be told - the
-                                   // store's word and not the kind's: a TLS identity
-                                   // is told the listeners a kind of node names, and
-                                   // a gateway names none, so it is told nothing.
-                                   new JProperty("hasUsages",       Certificates.HasUsages(kind)),
-                                   new JProperty("usages",          new JArray(Certificates.UsagesFor(kind)))
-                               )))
-                       )),
-
-                       // What a TLS root or a server certificate may be told it is
-                       // for - the services it vouches for - as it was said before
-                       // every kind said its own above.
-                       new JProperty("usages",       new JArray(Certificates.Usages)),
-
-                       new JProperty("certificates", byKind),
-
-                       // Said here because this is the page where somebody is looking at the
-                       // consequences of it, rather than only in the log at a start.
-                       new JProperty("keysAreUnencrypted", Certificates.Entries.Any(entry => entry.HasPrivateKey))
-
-                   );
 
         }
 

@@ -335,9 +335,11 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// A vehicle's root is a kind of certificate the node knows and a
-        /// gateway does not keep, and is refused by the store in its own words;
-        /// a kind nobody knows is refused naming the four a gateway keeps - and
-        /// neither leaves a directory behind.
+        /// gateway does not keep, and a kind nobody knows is none at all: both
+        /// are refused naming the four a gateway keeps - by the node's API
+        /// since WWCP_Node d778395, where the vehicle's was refused by the
+        /// store in its own words before - and neither leaves a directory
+        /// behind.
         /// </summary>
         [Test]
         public async Task WhatAGatewayDoesNotKeepIsRefused()
@@ -355,7 +357,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(vehicles,                     Is.EqualTo(HttpStatusCode.BadRequest));
-                Assert.That(vehicleSaid.ToString(),       Does.Contain("This gateway keeps no certificate of that kind"));
+                Assert.That(vehicleSaid.ToString(),       Does.Contain("'kind' has to be one of tlsRoot, clientRoot, tlsServer, tlsIdentity."));
                 Assert.That(nobodys,                      Is.EqualTo(HttpStatusCode.BadRequest));
                 Assert.That(nobodySaid.ToString(),        Does.Contain("'kind' has to be one of tlsRoot, clientRoot, tlsServer, tlsIdentity."));
                 Assert.That(Directory.Exists(Path.Combine(directory, "certificates", "roots", "v2g")),
