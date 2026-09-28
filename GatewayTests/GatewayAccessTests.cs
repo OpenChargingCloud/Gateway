@@ -41,9 +41,11 @@ namespace cloud.charging.open.Gateway.Tests
 {
 
     /// <summary>
-    /// Who may do what on a gateway: the node's resources and no others, its
-    /// operator beside the node's viewer and administrators - and a role from
-    /// the configuration file, heard by the API like every other.
+    /// Who may do what on a gateway: the node's resources and no others, and
+    /// its operator beside the node's viewer and administrators. A role from
+    /// the configuration file is heard like every other on every node - the
+    /// conformance suite of WWCP_Node_TestKit asks it of a gateway, see
+    /// GatewayConformance.
     /// </summary>
     public class GatewayAccessTests
     {
@@ -93,13 +95,13 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
 
-        #region (helper) GatewayFrom(Configuration)
+        #region (helper) GatewayFrom()
 
         /// <summary>
-        /// A gateway with the given configuration file, on a free port of the
+        /// A gateway whose time client is switched off, on a free port of the
         /// loopback - made, and not yet started.
         /// </summary>
-        private Gateway GatewayFrom(String Configuration = NoTimeServers)
+        private Gateway GatewayFrom()
         {
 
             var probe  = new TcpListener(System.Net.IPAddress.Loopback, 0);
@@ -108,7 +110,7 @@ namespace cloud.charging.open.Gateway.Tests
             probe.Stop();
 
             var file   = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
-            File.WriteAllText(file, Configuration);
+            File.WriteAllText(file, NoTimeServers);
 
             gateway    = new Gateway(
                              HTTPPort:        IPPort.Parse(port),
@@ -343,42 +345,6 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(deleted.StatusCode,            Is.EqualTo(HttpStatusCode.Forbidden),
                             "refused for who is asking, before it is asked whether there is such a certificate");
                 Assert.That(gateway!.Certificates.Entries, Is.Empty);
-            });
-
-        }
-
-        #endregion
-
-        #region ARoleFromTheConfigurationFileIsHeardByTheAPI()
-
-        /// <summary>
-        /// A role nobody compiled in: the file names it, the start makes its
-        /// group, and a route asking for a permission lets it in or not by what
-        /// the file says it carries.
-        /// </summary>
-        [Test]
-        public async Task ARoleFromTheConfigurationFileIsHeardByTheAPI()
-        {
-
-            await GatewayFrom("""
-                              {
-                                "nts":   { "enabled": false },
-                                "roles": { "support": [ "dns:read" ] }
-                              }
-                              """).Start();
-
-            using var support  = await SignedInAs("supporter", "support");
-
-            var dns            = await support.GetAsync("api/v1/configuration/dns");
-            var nts            = await support.GetAsync("api/v1/configuration/nts");
-            var refusal        = await nts.Content.ReadAsStringAsync();
-
-            Assert.Multiple(() => {
-                Assert.That(gateway!.Roles,    Is.EqualTo(new[] { "viewer", "operator", "support", WWCPNode.AdminRole }));
-                Assert.That(dns.StatusCode,    Is.EqualTo(HttpStatusCode.OK));
-                Assert.That(nts.StatusCode,    Is.EqualTo(HttpStatusCode.Forbidden));
-                Assert.That(refusal,           Does.Contain("This needs the viewer or operator or systemadmin role."),
-                            "the file's role carries dns:read and nothing else, so it is not among the ones to ask for");
             });
 
         }

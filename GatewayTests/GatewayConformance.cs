@@ -35,11 +35,13 @@ namespace cloud.charging.open.Gateway.Tests
     /// suite of WWCP_Node_TestKit.
     /// </summary>
     /// <remarks>
-    /// The sign-in, the configuration, name resolution and the time servers,
-    /// the diagnostics, the log and its event stream, stopping with browsers
-    /// watching, the certificate store and the web interface. This suite had
-    /// copies of the event stream's tests, of the learned pins and of most of
-    /// the certificate store's, and none of the rest.
+    /// The start, the sign-in and the roles a configuration file adds, the
+    /// configuration, name resolution and the time servers, the diagnostics,
+    /// the log and its event stream, stopping with browsers watching, the
+    /// certificate store and the web interface. This suite had copies of the
+    /// event stream's tests, of the learned pins, of most of the certificate
+    /// store's and of a role from the configuration file, and none of the
+    /// rest.
     /// </remarks>
     public class GatewayConformance : NodeConformanceTests
     {
