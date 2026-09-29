@@ -1,17 +1,8 @@
 // The web interface of a gateway. What every node shows alike - the frame,
-// the forms, sign-in, logs, DNS, NTS, pins, the certificate store - is
-// WWCP_Node's, in the gateway's colour; below it, what only the gateway's own
-// pages need.
+// the forms, sign-in, logs, DNS, NTS, pins, the certificate store, a commit
+// on the Configuration page - is WWCP_Node's, in the gateway's colour; the
+// gateway's own pages need nothing beyond it yet.
 @use '@node/styles/node' as * with (
     $color-accent:       #1b7f4d,
     $color-accent-dark:  #14633c
 );
-
-// A commit is forty characters that have to survive being copied out of here
-// and pasted into a checkout, so it is never shortened and never truncated -
-// it wraps instead. Monospaced because that is what makes two of them
-// comparable at a glance.
-.commit {
-    font-family:  ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    word-break:   break-all;
-}

@@ -241,8 +241,8 @@ namespace cloud.charging.open.Gateway
 
         /// <summary>
         /// What this gateway is, as the Configuration page of the web interface
-        /// reads it: what the node below says of itself, and on top the
-        /// gateway and the assemblies it was built from.
+        /// reads it: what the node below says of itself - the assemblies it was
+        /// built from last, one line per repository - and on top the gateway.
         /// </summary>
         public override JObject ConfigurationJSON()
         {
@@ -257,45 +257,6 @@ namespace cloud.charging.open.Gateway
                               new JProperty("runtime",        Environment.Version.ToString()),
                               new JProperty("os",             Environment.OSVersion.ToString())
                           )));
-
-            json.Add(new JProperty("assemblies", new JArray(
-                         BuiltFrom.Assemblies.Select(AssemblyJSON)
-                     )));
-
-            return json;
-
-        }
-
-        #endregion
-
-        #region (private static) AssemblyJSON(Assembly)
-
-        /// <summary>
-        /// One library of this gateway, as the Configuration page reads it.
-        /// </summary>
-        /// <remarks>
-        /// Nothing is named here any more. What used to be four hand-written
-        /// lines is whatever BuiltFrom finds loaded, so a library that joins
-        /// this gateway appears by itself and one that leaves stops being
-        /// claimed - which a hand-written list never manages for long.
-        ///
-        /// The label is the repository where there is one, because that is what
-        /// somebody looking at a bug report can check out; the assembly's own
-        /// name stays beside it for the libraries that carry no stamp yet.
-        /// </remarks>
-        private static JObject AssemblyJSON(LoadedAssembly Assembly)
-        {
-
-            var json = new JObject(
-                           new JProperty("name",      Assembly.Repository ?? Assembly.Name),
-                           new JProperty("assembly",  Assembly.Name),
-                           new JProperty("version",   Assembly.Version)
-                       );
-
-            // Only when it is known: an empty commit in a bug report reads like
-            // an answer, and it is not one.
-            if (Assembly.Commit is not null)
-                json.Add(new JProperty("commit", Assembly.Commit));
 
             return json;
 
