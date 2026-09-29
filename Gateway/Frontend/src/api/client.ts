@@ -39,8 +39,7 @@ export type Status = NodeStatus;
  * change here.
  */
 export interface Configuration extends NodeConfiguration {
-    gateway:     Record<string, unknown>;
-    assemblies:  Record<string, unknown>[];
+    gateway:  Record<string, unknown>;
 }
 
 /**
