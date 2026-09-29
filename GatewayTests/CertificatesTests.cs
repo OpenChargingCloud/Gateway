@@ -19,7 +19,6 @@
 
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Sockets;
 using System.Text;
 
 using Newtonsoft.Json.Linq;
@@ -29,6 +28,7 @@ using NUnit.Framework;
 using org.GraphDefined.Vanaheimr.Hermod;
 
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
+using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 #endregion
 
@@ -64,27 +64,20 @@ namespace cloud.charging.open.Gateway.Tests
 
             Directory.CreateDirectory(directory);
 
-            var probe  = new TcpListener(System.Net.IPAddress.Loopback, 0);
-            probe.Start();
-            var port   = ((IPEndPoint) probe.LocalEndpoint).Port;
-            probe.Stop();
-
             var file   = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
             File.WriteAllText(file, """{ "nts": { "enabled": false } }""");
 
-            gateway    = new Gateway(
-                             HTTPPort:          IPPort.Parse(port),
+            gateway    = await TestPorts.StartedOnFreshPorts(() => new Gateway(
+                             HTTPPort:          IPPort.Parse(TestPorts.Free()),
                              AccountsPath:      Path.Combine(directory, "accounts"),
                              ConfigFile:        new WWCPConfigFile(file),
                              CertificatesPath:  Path.Combine(directory, "certificates"),
                              LogToConsole:      false,
                              BridgeDebugLog:    false
-                         );
-
-            await gateway.Start();
+                         ));
 
             client     = new HttpClient {
-                             BaseAddress  = new Uri($"http://127.0.0.1:{port}/"),
+                             BaseAddress  = new Uri($"http://127.0.0.1:{gateway.HTTPPort}/"),
                              Timeout      = TimeSpan.FromSeconds(30)
                          };
 

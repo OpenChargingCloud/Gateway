@@ -19,7 +19,6 @@
 
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Sockets;
 using System.Text;
 
 using Newtonsoft.Json.Linq;
@@ -34,6 +33,7 @@ using org.GraphDefined.Vanaheimr.Hermod.Mail;
 using cloud.charging.open.protocols.WWCP.Node;
 using cloud.charging.open.protocols.WWCP.Node.Web;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
+using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 #endregion
 
@@ -99,15 +99,14 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// A gateway whose time client is switched off, on a free port of the
-        /// loopback - made, and not yet started.
+        /// loopback - made, and not yet started. Started through
+        /// TestPorts.StartedOnFreshPorts, it is made again where its port was
+        /// taken, and the gateway and the address are the last one's.
         /// </summary>
         private Gateway GatewayFrom()
         {
 
-            var probe  = new TcpListener(System.Net.IPAddress.Loopback, 0);
-            probe.Start();
-            var port   = ((IPEndPoint) probe.LocalEndpoint).Port;
-            probe.Stop();
+            var port   = TestPorts.Free();
 
             var file   = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
             File.WriteAllText(file, NoTimeServers);
@@ -287,7 +286,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task AnOperatorMayLookAtTheDNSSettingsAndIsToldWhoMayChangeThem()
         {
 
-            await GatewayFrom().Start();
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
             using var @operator  = await SignedInAs("operator1", "operator");
 
@@ -324,7 +323,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task AnOperatorMayLookAtTheCertificatesAndIsToldWhoMayChangeThem()
         {
 
-            await GatewayFrom().Start();
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
             using var @operator  = await SignedInAs("operator2", "operator");
 

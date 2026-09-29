@@ -17,9 +17,6 @@
 
 #region Usings
 
-using System.Net;
-using System.Net.Sockets;
-
 using NUnit.Framework;
 
 using org.GraphDefined.Vanaheimr.Hermod;
@@ -27,6 +24,7 @@ using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
 using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
+using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 #endregion
 
@@ -94,28 +92,20 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// A gateway listening on a free port of the loopback, writing its log
-        /// into the test's directory.
+        /// into the test's directory - made again, on fresh ports, where
+        /// another test run on this machine took its port first.
         /// </summary>
-        private async Task<Int32> StartedGateway()
+        private async Task StartedGateway()
         {
 
-            var probe = new TcpListener(System.Net.IPAddress.Loopback, 0);
-            probe.Start();
-            var port  = ((IPEndPoint) probe.LocalEndpoint).Port;
-            probe.Stop();
-
-            gateway = new Gateway(
-                          HTTPPort:        IPPort.Parse(port),
+            gateway = await TestPorts.StartedOnFreshPorts(() => new Gateway(
+                          HTTPPort:        IPPort.Parse(TestPorts.Free()),
                           AccountsPath:    Path.Combine(directory, "accounts"),
                           ConfigFile:      new WWCPConfigFile(Path.Combine(directory, WWCPConfigFile.DefaultFileName)),
                           LogPath:         Path.Combine(directory, "logs"),
                           LogToConsole:    false,
                           BridgeDebugLog:  false
-                      );
-
-            await gateway.Start();
-
-            return port;
+                      ));
 
         }
 
