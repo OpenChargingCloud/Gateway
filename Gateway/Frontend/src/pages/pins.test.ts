@@ -271,11 +271,11 @@ describe('what the certificate store offers a server', () => {
 
     const store = {
         certificates: {
-            tlsRoot:    [ kept('For Every Use', root),
-                          kept('For Clocks',    otherRoot,             { usages: [ 'nts' ] }),
-                          kept('Switched Off',  'e'.repeat(64),        { usable: false, active: false }) ],
-            tlsServer:  [ kept('Resolver',      certificate,           { kind: 'tlsServer', usages: [ 'dns' ] }) ],
-            v2gRoot:    [ kept('V2G',           renewal,               { kind: 'v2gRoot' }) ]
+            tlsRoot:      [ kept('For Every Use', root),
+                            kept('For Clocks',    otherRoot,             { usages: [ 'nts' ] }),
+                            kept('Switched Off',  'e'.repeat(64),        { usable: false, active: false }) ],
+            tlsServer:    [ kept('Resolver',      certificate,           { kind: 'tlsServer', usages: [ 'dns' ] }) ],
+            tlsIdentity:  [ kept('This Gateway',  renewal,               { kind: 'tlsIdentity', hasPrivateKey: true }) ]
         }
     } as unknown as CertificateStore;
 
@@ -297,7 +297,7 @@ describe('what the certificate store offers a server', () => {
 
         const offers = offersOf(store, 'nts');
 
-        assert.equal(offers.nameOf(renewal.toUpperCase()), 'V2G');
+        assert.equal(offers.nameOf(renewal.toUpperCase()), 'This Gateway');
         assert.equal(offers.nameOf('f'.repeat(64)),        undefined);
 
     });
