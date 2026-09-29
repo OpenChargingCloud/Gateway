@@ -5,71 +5,43 @@ import './styles/app.scss';
 import '@fortawesome/fontawesome-free/css/fontawesome.css';
 import '@fortawesome/fontawesome-free/css/solid.css';
 
-import { auth } from './auth';
-import { html, must, render } from '@node/html';
-import { logs } from '@node/logs/store';
-import { Router } from '@node/router';
+import { nodeMenu, startNode } from '@node/start';
 
 import { configurationPage } from './pages/configuration';
 import { dnsPage }           from './pages/dns';
 import { ntsPage }           from './pages/nts';
-import { certificatesPage } from './pages/certificates';
-import { loginPage }         from './pages/login';
-import { logsPage }          from './pages/logs';
-import { notFoundPage }      from './pages/notFound';
-import { fromURL } from '@node/basePath';
+import { certificatesPage }  from './pages/certificates';
 
+// What a gateway has pages for is what every node has: its configuration,
+// name resolution, the time, the certificate store and the log. The sign-in,
+// the log, the frame and following the log while somebody is signed in are
+// every node's - see WWCP_Node's start.ts. The OCPP forwarding will bring the
+// first page of a gateway's own.
+startNode({
 
-const root = document.getElementById('app');
+    name:  'Gateway',
+    icon:  'fa-network-wired',
 
-if (root === null)
-    throw new Error("The '#app' element is missing!");
-
-render(root, html`<div id="page" class="page"></div>`);
-
-const router = new Router({
-    routes: [
-        // "/" is the configuration, and is a route of its own rather than a
-        // redirect to /configuration: the sign-in remembers where somebody was
-        // going, and for the first visit that is "/" - which would otherwise be
-        // a page that exists on the way in and not on the way back.
-        { path: '/',                     page: configurationPage,  guard: auth.requireSignIn },
-        { path: '/configuration',        page: configurationPage,  guard: auth.requireSignIn },
-        { path: '/configuration/dns',     page: dnsPage,           guard: auth.requireSignIn },
-        { path: '/configuration/nts',     page: ntsPage,           guard: auth.requireSignIn },
-        { path: '/configuration/certificates', page: certificatesPage, guard: auth.requireSignIn },
-        { path: '/logs',                 page: logsPage,           guard: auth.requireSignIn },
-        { path: '/login',                page: loginPage }
+    menu: [
+        nodeMenu.configuration([
+            nodeMenu.dns,
+            nodeMenu.nts,
+            nodeMenu.certificates
+        ]),
+        nodeMenu.logs
     ],
-    outlet:       must<HTMLElement>(root, '#page'),
-    notFound:     notFoundPage,
-    titleSuffix:  ' · Gateway'
-});
 
-// Signed in: follow the gateway's log from now on, whichever page is open -
-// so that opening the Logs page shows what happened while somebody was
-// reading the configuration, and not an empty list. It is also what makes the
-// DNS and NTS tests worth watching: each writes every step into the log as it
-// happens.
-// Signed out - by the button, or because the session expired and a request
-// came back with 401: close the stream, forget the log, show the sign-in.
-auth.onChange(user => {
+    pages: {
 
-    if (user !== null) {
-        logs.start();
-        return;
+        // "/" is the configuration, and is a page of its own rather than a
+        // redirect to /configuration: the sign-in remembers where somebody was
+        // going, and for the first visit that is "/".
+        '/':                            configurationPage,
+        '/configuration':               configurationPage,
+        '/configuration/dns':           dnsPage,
+        '/configuration/nts':           ntsPage,
+        '/configuration/certificates':  certificatesPage
+
     }
 
-    logs.stop();
-
-    if (fromURL(location.pathname) !== '/login')
-        router.navigate(auth.requireSignIn(new URL(location.href)) ?? '/login', true);
-
 });
-
-// Find out who is signed in before the first page renders, so that a reload on
-// a deep URL does not flash the sign-in page on its way back to where it was.
-void (async () => {
-    await auth.refresh();
-    router.start();
-})();
