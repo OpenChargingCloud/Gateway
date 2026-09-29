@@ -34,9 +34,9 @@ export type Status = NodeStatus;
 
 /**
  * What the gateway is made of: every node's sections, and its own. Only the
- * shape the Configuration page relies on is named; the rest is rendered from
- * whatever the gateway sends, so that a new section on the server needs no
- * change here.
+ * shape the Configuration page relies on is named; the fields of each
+ * section are rendered from whatever the gateway sends, and which sections
+ * there are is the page's to say.
  */
 export interface Configuration extends NodeConfiguration {
     gateway:  Record<string, unknown>;
