@@ -8,15 +8,13 @@ import '@fortawesome/fontawesome-free/css/solid.css';
 import { nodeMenu, startNode } from '@node/start';
 
 import { configurationPage } from './pages/configuration';
-import { dnsPage }           from './pages/dns';
-import { ntsPage }           from './pages/nts';
 import { certificatesPage }  from './pages/certificates';
 
 // What a gateway has pages for is what every node has: its configuration,
 // name resolution, the time, the certificate store and the log. The sign-in,
-// the log, the frame and following the log while somebody is signed in are
-// every node's - see WWCP_Node's start.ts. The OCPP forwarding will bring the
-// first page of a gateway's own.
+// the log, the name servers, the time servers, the frame and following the
+// log while somebody is signed in are every node's - see WWCP_Node's start.ts.
+// The OCPP forwarding will bring the first page of a gateway's own.
 startNode({
 
     name:  'Gateway',
@@ -31,15 +29,13 @@ startNode({
         nodeMenu.logs
     ],
 
+    // "/" is every node's: the first page of the menu the person signed in may
+    // open - the configuration for whoever may read it, and the time servers,
+    // say, for an account that may read only those, where the configuration's
+    // own page had answered 403.
     pages: {
 
-        // "/" is the configuration, and is a page of its own rather than a
-        // redirect to /configuration: the sign-in remembers where somebody was
-        // going, and for the first visit that is "/".
-        '/':                            configurationPage,
         '/configuration':               configurationPage,
-        '/configuration/dns':           dnsPage,
-        '/configuration/nts':           ntsPage,
         '/configuration/certificates':  certificatesPage
 
     }
