@@ -1,11 +1,11 @@
 /**
  * The configuration drawn, in a document of happy-dom, against a stand-in
- * gateway: its cards - html.ts's, in a template of view.ts - stand as the
- * markup they are, Reload draws them again with what the gateway says then,
- * and a configuration that cannot be had is said so.
+ * gateway: its cards stand as the markup they are, the frame's Reload asks
+ * the gateway again and draws them with what it says then, and a
+ * configuration that cannot be had is said so.
  */
 
-import { open, refused, until, type Asked } from '../../test/gateway.ts';
+import { asked, open, refused, until, type Asked } from '../../test/gateway.ts';
 
 import { strict as assert }  from 'node:assert';
 import { describe, it }      from 'node:test';
@@ -48,11 +48,15 @@ describe('the configuration', () => {
         assert.match(root.querySelector('.cards')!.textContent!, /Uptime\s+1 minute/);
         assert.doesNotMatch(root.textContent!, /<section|<div/, 'a card was taken as text');
 
+        const configurationsAsked = () => asked.filter(one => one.method === 'GET' && one.path === '/configuration').length;
+        assert.equal(configurationsAsked(), 1);
+
         uptime = '2 minutes';
-        root.querySelector<HTMLButtonElement>('#reload')!.click();
+        root.querySelector<HTMLButtonElement>('.page-actions #reload')!.click();
 
         await until(() => /Uptime\s+2 minutes/.test(root.textContent!), 'Reload did not draw what the gateway says then');
 
+        assert.equal(configurationsAsked(), 2, 'Reload did not ask the gateway again');
         assert.equal(root.querySelectorAll('.cards > section.card').length, 6);
 
     });
@@ -68,7 +72,7 @@ describe('the configuration', () => {
         assert.equal(root.querySelector('.cards'), null);
 
         available = true;
-        root.querySelector<HTMLButtonElement>('#reload')!.click();
+        root.querySelector<HTMLButtonElement>('.page-actions #reload')!.click();
 
         await until(() => root.querySelector('.cards') !== null, 'Reload did not draw the configuration');
 
