@@ -1,0 +1,79 @@
+/**
+ * The configuration drawn, in a document of happy-dom, against a stand-in
+ * gateway: its cards - html.ts's, in a template of view.ts - stand as the
+ * markup they are, Reload draws them again with what the gateway says then,
+ * and a configuration that cannot be had is said so.
+ */
+
+import { open, refused, until, type Asked } from '../../test/gateway.ts';
+
+import { strict as assert }  from 'node:assert';
+import { describe, it }      from 'node:test';
+
+const { configurationPage } = await import('./configuration.ts');
+
+
+let uptime     = '1 minute';
+let available  = true;
+
+function gateway({ path }: Asked): unknown {
+
+    if (path === '/status')
+        return { service: 'Gateway', version: '1.0', hermod: null, timestamp: '2026-10-04T12:00:00Z',
+                 startedAt: '2026-10-04T11:59:00Z', uptime, sessions: 1, log: { entries: 0, capacity: 100, lastId: 0, tags: [] } };
+
+    if (path === '/configuration')
+        return available
+                   ? { gateway: { name: 'gw001' }, http: { port: 3000 }, web: {}, log: {}, time: {},
+                       assemblies: [ { name: 'Gateway', version: '1.0', commit: 'abc1234' } ] }
+                   : refused(500, 'the configuration file could not be read');
+
+    return undefined;
+
+}
+
+
+describe('the configuration', () => {
+
+    it('draws its cards as markup, and again on Reload', async () => {
+
+        uptime     = '1 minute';
+        available  = true;
+
+        const root = await open(configurationPage, '/configuration', [ 'configuration:read' ],
+                                gateway, root => root.querySelector('.cards') !== null);
+
+        assert.equal(root.querySelectorAll('.cards > section.card').length, 6);
+        assert.match(root.querySelector('.cards')!.textContent!, /gw001/);
+        assert.match(root.querySelector('.cards')!.textContent!, /Uptime\s+1 minute/);
+        assert.doesNotMatch(root.textContent!, /<section|<div/, 'a card was taken as text');
+
+        uptime = '2 minutes';
+        root.querySelector<HTMLButtonElement>('#reload')!.click();
+
+        await until(() => /Uptime\s+2 minutes/.test(root.textContent!), 'Reload did not draw what the gateway says then');
+
+        assert.equal(root.querySelectorAll('.cards > section.card').length, 6);
+
+    });
+
+    it('says so where the configuration cannot be had, and draws it once Reload has it', async () => {
+
+        available = false;
+
+        const root = await open(configurationPage, '/configuration', [ 'configuration:read' ],
+                                gateway, root => root.querySelector('.error-box') !== null);
+
+        assert.match(root.querySelector('.error-box')!.textContent!, /The configuration could not be loaded: .*could not be read/);
+        assert.equal(root.querySelector('.cards'), null);
+
+        available = true;
+        root.querySelector<HTMLButtonElement>('#reload')!.click();
+
+        await until(() => root.querySelector('.cards') !== null, 'Reload did not draw the configuration');
+
+        assert.equal(root.querySelector('.error-box'), null, 'the error stayed beside the cards');
+
+    });
+
+});
