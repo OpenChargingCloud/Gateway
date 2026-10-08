@@ -36,11 +36,12 @@ namespace cloud.charging.open.Gateway.Tests
 {
 
     /// <summary>
-    /// Which of a gateway's kinds of certificate is told what it is for, over
-    /// the wire. What a root is for said at the upload, changed afterwards and
-    /// taken back to every use, a usage or a kind refused where it is typed,
-    /// and a certificate copied into the directory and adopted when it is read
-    /// again, is what every node does - the conformance suite of
+    /// Which of a gateway's kinds of certificate a page offers what it may be
+    /// for, over the wire. What a root is for said at the upload, changed afterwards and
+    /// taken back to every use, a usage made up kept and what is no usage or
+    /// kind refused where it is typed, a certificate kept as several kinds,
+    /// and a certificate copied into the directory and adopted when it is
+    /// read again, is what every node does - the conformance suite of
     /// WWCP_Node_TestKit asks it of a gateway, see GatewayConformance.
     /// </summary>
     public class CertificatesTests
@@ -139,10 +140,11 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// The four kinds of TLS and none of a vehicle's, in their three
-        /// groups - and of them the two that are told what they are for, a TLS
-        /// root and a server certificate, told the services a gateway has; not
-        /// a client root, and not an identity, since a gateway names no
-        /// listener one could be shown on.
+        /// groups - and of them the two a page offers what they may be for, a
+        /// TLS root and a server certificate, offered the services a gateway
+        /// has; not a client root, which nothing here uses yet, and not an
+        /// identity, since a gateway names no listener one could be shown on.
+        /// Any of them may still be marked with a usage made up.
         /// </summary>
         /// <remarks>
         /// What every node says of its store - that the answer is the store's
@@ -163,15 +165,12 @@ namespace cloud.charging.open.Gateway.Tests
 
                 Assert.That(store["usages"]!.Values<String>(),                               Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer");
 
-                Assert.That(store["kinds"]!["tlsRoot"]!["hasUsages"]!.Value<Boolean>(),      Is.True);
                 Assert.That(store["kinds"]!["tlsRoot"]!["usages"]!.Values<String>(),         Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer a root");
-                Assert.That(store["kinds"]!["tlsServer"]!["hasUsages"]!.Value<Boolean>(),    Is.True);
                 Assert.That(store["kinds"]!["tlsServer"]!["usages"]!.Values<String>(),       Is.EqualTo(new[] { "dns", "nts" }));
-                Assert.That(store["kinds"]!["clientRoot"]!["hasUsages"]!.Value<Boolean>(),   Is.False);
-                Assert.That(store["kinds"]!["clientRoot"]!["usages"]!.Children().Any(),      Is.False);
-                Assert.That(store["kinds"]!["tlsIdentity"]!["hasUsages"]!.Value<Boolean>(),  Is.False,
+                Assert.That(store["kinds"]!["clientRoot"]!["usages"]!.Children().Any(),      Is.False,
+                            "nothing here uses a client root yet, so a page offers it nothing");
+                Assert.That(store["kinds"]!["tlsIdentity"]!["usages"]!.Children().Any(),     Is.False,
                             "a gateway names no listener an identity could be told of, so a page offers it nothing - not the services a root vouches for");
-                Assert.That(store["kinds"]!["tlsIdentity"]!["usages"]!.Children().Any(),     Is.False);
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                         Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
                 Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity" }));
