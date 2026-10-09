@@ -11,9 +11,9 @@ import { nodeMenu, startNode } from '@node/start';
 import { configurationPage } from './pages/configuration';
 
 // What a gateway has pages for is what every node has: its configuration,
-// name resolution, the time, the certificate store, who it is as a client and
-// the log. The sign-in, the log, the name servers, the time servers, the
-// certificates, the identities, the frame and following the log while somebody is signed in are every node's -
+// name resolution, the time, the SSH server, the certificate store, who it is
+// as a client and the log. The sign-in, the log, the name servers, the time
+// servers, the SSH server, the certificates, the identities, the frame and following the log while somebody is signed in are every node's -
 // see WWCP_Node's start.ts. The OCPP forwarding will bring the first page of a
 // gateway's own.
 startNode({
@@ -25,6 +25,7 @@ startNode({
         nodeMenu.configuration([
             nodeMenu.dns,
             nodeMenu.nts,
+            nodeMenu.ssh,
             nodeMenu.certificates,
             nodeMenu.identities
         ]),

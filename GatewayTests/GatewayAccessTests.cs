@@ -226,7 +226,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "operator", WWCPNode.AdminRole }));
-                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates" }));
+                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates", "ssh" }));
             });
 
         }
@@ -239,7 +239,8 @@ namespace cloud.charging.open.Gateway.Tests
         /// What each role could do before roles were data, permission by
         /// permission: the viewer looks, the operator also asks the name and
         /// time servers, and only the administrators repoint them - or change
-        /// the certificates they are held to, which everybody may look at.
+        /// the certificates they are held to, or the SSH server, which
+        /// everybody may look at.
         /// </summary>
         [TestCase("viewer",       "configuration:read",  true)]
         [TestCase("viewer",       "dns:read",            true)]
@@ -249,6 +250,8 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("viewer",       "dns:run",             false)]
         [TestCase("viewer",       "nts:run",             false)]
         [TestCase("viewer",       "certificates:edit",   false)]
+        [TestCase("viewer",       "ssh:read",            true)]
+        [TestCase("viewer",       "ssh:edit",            false)]
 
         [TestCase("operator",     "configuration:read",  true)]
         [TestCase("operator",     "dns:read",            true)]
@@ -258,11 +261,14 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("operator",     "dns:edit",            false)]
         [TestCase("operator",     "nts:edit",            false)]
         [TestCase("operator",     "certificates:edit",   false)]
+        [TestCase("operator",     "ssh:read",            true)]
+        [TestCase("operator",     "ssh:edit",            false)]
 
         [TestCase("systemadmin",  "dns:edit",            true)]
         [TestCase("systemadmin",  "nts:edit",            true)]
         [TestCase("systemadmin",  "nts:run",             true)]
         [TestCase("systemadmin",  "certificates:edit",   true)]
+        [TestCase("systemadmin",  "ssh:edit",            true)]
         public void EachRoleMayDoWhatItAlwaysMayDo(String Role, String Permission, Boolean Allowed)
         {
 
@@ -344,6 +350,43 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(deleted.StatusCode,            Is.EqualTo(HttpStatusCode.Forbidden),
                             "refused for who is asking, before it is asked whether there is such a certificate");
                 Assert.That(gateway!.Certificates.Entries, Is.Empty);
+            });
+
+        }
+
+        #endregion
+
+        #region AnOperatorMayLookAtTheSSHServerAndIsToldWhoMayChangeIt()
+
+        /// <summary>
+        /// The SSH server as a browser signed in as an operator sees it: its
+        /// page opens, and switching it off is refused with the role to ask
+        /// for - the server where it was, and the file as it was.
+        /// </summary>
+        [Test]
+        public async Task AnOperatorMayLookAtTheSSHServerAndIsToldWhoMayChangeIt()
+        {
+
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
+
+            using var @operator  = await SignedInAs("operator3", "operator");
+
+            var file             = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
+            var fileBefore       = File.ReadAllText(file);
+
+            var looked           = await @operator.GetAsync("api/v1/configuration/ssh");
+            var before           = JObject.Parse(await looked.Content.ReadAsStringAsync());
+            var changed          = await Put(@operator, "api/v1/configuration/ssh", """{ "enabled": false }""");
+            var refusal          = await changed.Content.ReadAsStringAsync();
+            var after            = JObject.Parse(await (await @operator.GetAsync("api/v1/configuration/ssh")).Content.ReadAsStringAsync());
+
+            Assert.Multiple(() => {
+                Assert.That(looked.StatusCode,                  Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(changed.StatusCode,                 Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(refusal,                            Does.Contain("This needs the systemadmin role."));
+                Assert.That(after["enabled"]!.Value<Boolean>(), Is.EqualTo(before["enabled"]!.Value<Boolean>()), "the server was switched");
+                Assert.That(after["port"]?.ToString(),          Is.EqualTo(before["port"]?.ToString()),          "the server was moved");
+                Assert.That(File.ReadAllText(file),             Is.EqualTo(fileBefore),                          "the refused change reached the file");
             });
 
         }

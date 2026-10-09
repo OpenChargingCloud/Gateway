@@ -63,7 +63,8 @@ namespace cloud.charging.open.Gateway
         /// <summary>
         /// Whoever runs this gateway day to day: may look at everything and ask
         /// whether the network works - but may not repoint it at other name and
-        /// time servers, and may not change the certificates it holds them to.
+        /// time servers, may not change the certificates it holds them to, and
+        /// may not move its SSH server or let passwords open it.
         /// </summary>
         public static readonly Role  Operator  = new ("operator",
                                                       [ Permission.Read(Permission.AnyResource),
