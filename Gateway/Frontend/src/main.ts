@@ -11,9 +11,9 @@ import { nodeMenu, startNode } from '@node/start';
 import { configurationPage } from './pages/configuration';
 
 // What a gateway has pages for is what every node has: its configuration,
-// name resolution, the time, the certificate store and the log. The sign-in,
-// the log, the name servers, the time servers, the certificate store, the
-// frame and following the log while somebody is signed in are every node's -
+// name resolution, the time, the certificate store, who it is as a client and
+// the log. The sign-in, the log, the name servers, the time servers, the
+// certificates, the identities, the frame and following the log while somebody is signed in are every node's -
 // see WWCP_Node's start.ts. The OCPP forwarding will bring the first page of a
 // gateway's own.
 startNode({
@@ -25,15 +25,17 @@ startNode({
         nodeMenu.configuration([
             nodeMenu.dns,
             nodeMenu.nts,
-            nodeMenu.certificates
+            nodeMenu.certificates,
+            nodeMenu.identities
         ]),
         nodeMenu.logs
     ],
 
     // The certificate store says what every node says of it, in a gateway's
     // name - but a gateway keeps two kinds nothing here uses yet, a client
-    // root and its identity, and says so under what it believes and what it
-    // presents.
+    // root and its identity as a client, and says so under what it believes,
+    // on the Certificates page, and under who it is, on the Identities page.
+    // It keeps no server identity, so it has no Server certificates page.
     certificates: {
         hints: {
             believes:  html`
@@ -43,8 +45,8 @@ startNode({
                 to chain to; nothing here asks a client for a certificate yet.
             `,
             presents:  html`
-                Its identity in TLS, with its private key. Kept for when this gateway speaks TLS itself;
-                nothing here presents it yet.
+                What it will show a server that asks who it is, with its private key. Kept for when this
+                gateway connects to one that does; nothing here presents it yet.
             `
         }
     },

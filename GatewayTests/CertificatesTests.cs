@@ -144,7 +144,9 @@ namespace cloud.charging.open.Gateway.Tests
         /// TLS root and a server certificate, offered the services a gateway
         /// has; not a client root, which nothing here uses yet, and not an
         /// identity, since a gateway names no listener one could be shown on.
-        /// Any of them may still be marked with a usage made up.
+        /// Any of them may still be marked with a usage made up. The roots and
+        /// the server certificates are on the Certificates page, the identity
+        /// - who a gateway is as a client - on the Identities page.
         /// </summary>
         /// <remarks>
         /// What every node says of its store - that the answer is the store's
@@ -171,6 +173,12 @@ namespace cloud.charging.open.Gateway.Tests
                             "nothing here uses a client root yet, so a page offers it nothing");
                 Assert.That(store["kinds"]!["tlsIdentity"]!["usages"]!.Children().Any(),     Is.False,
                             "a gateway names no listener an identity could be told of, so a page offers it nothing - not the services a root vouches for");
+
+                Assert.That(store["kinds"]!["tlsRoot"]!["page"]!.Value<String>(),            Is.EqualTo("certificates"));
+                Assert.That(store["kinds"]!["clientRoot"]!["page"]!.Value<String>(),         Is.EqualTo("certificates"));
+                Assert.That(store["kinds"]!["tlsServer"]!["page"]!.Value<String>(),          Is.EqualTo("certificates"));
+                Assert.That(store["kinds"]!["tlsIdentity"]!["page"]!.Value<String>(),        Is.EqualTo("identities"),
+                            "who a gateway is as a client is on the Identities page, with its key - and nothing on Server certificates, a gateway keeping no server identity");
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                         Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
                 Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity" }));
