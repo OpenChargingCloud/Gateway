@@ -178,7 +178,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(store["kinds"]!["clientRoot"]!["page"]!.Value<String>(),         Is.EqualTo("certificates"));
                 Assert.That(store["kinds"]!["tlsServer"]!["page"]!.Value<String>(),          Is.EqualTo("certificates"));
                 Assert.That(store["kinds"]!["tlsIdentity"]!["page"]!.Value<String>(),        Is.EqualTo("identities"),
-                            "who a gateway is as a client is on the Identities page, with its key - and nothing on Server certificates, a gateway keeping no server identity");
+                            "who a gateway is as a client is on the Identities page, with its key - and nothing on Server identities, a gateway keeping no server identity");
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                         Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
                 Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity" }));

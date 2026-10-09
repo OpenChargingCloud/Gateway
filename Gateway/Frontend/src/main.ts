@@ -36,7 +36,7 @@ startNode({
     // name - but a gateway keeps two kinds nothing here uses yet, a client
     // root and its identity as a client, and says so under what it believes,
     // on the Certificates page, and under who it is, on the Identities page.
-    // It keeps no server identity, so it has no Server certificates page.
+    // It keeps no server identity, so it has no Server identities page.
     certificates: {
         hints: {
             believes:  html`
