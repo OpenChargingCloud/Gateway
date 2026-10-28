@@ -12,8 +12,10 @@ import { configurationPage } from './pages/configuration';
 
 // What a gateway has pages for is what every node has: its configuration,
 // name resolution, the time, the SSH server, the certificate store, who it is
-// as a client and the log. The sign-in, the log, the name servers, the time
-// servers, the SSH server, the certificates, the identities, the frame and following the log while somebody is signed in are every node's -
+// as a client, what its web interface shows over HTTPS and the log. The
+// sign-in, the log, the name servers, the time servers, the SSH server, the
+// certificates, the identities, the frame and following the log while somebody
+// is signed in are every node's -
 // see WWCP_Node's start.ts. The OCPP forwarding will bring the first page of a
 // gateway's own.
 startNode({
@@ -27,7 +29,10 @@ startNode({
             nodeMenu.nts,
             nodeMenu.ssh,
             nodeMenu.certificates,
-            nodeMenu.identities
+            nodeMenu.identities,
+            // What the web interface shows over HTTPS, where the "web"
+            // section says "tls": { "certificate": "store" } or --https.
+            nodeMenu.serverIdentities
         ]),
         nodeMenu.logs
     ],
@@ -36,7 +41,7 @@ startNode({
     // name - but a gateway keeps two kinds nothing here uses yet, a client
     // root and its identity as a client, and says so under what it believes,
     // on the Certificates page, and under who it is, on the Identities page.
-    // It keeps no server identity, so it has no Server identities page.
+    // What its web interface shows over HTTPS is on the Server identities page.
     certificates: {
         hints: {
             believes:  html`
@@ -48,6 +53,11 @@ startNode({
             presents:  html`
                 What it will show a server that asks who it is, with its private key. Kept for when this
                 gateway connects to one that does; nothing here presents it yet.
+            `,
+            serves:    html`
+                What the web interface, the JSON API and the sign-in show over HTTPS, with its private key -
+                where the "web" section of the configuration file says "tls": { "certificate": "store" },
+                or the gateway is started with --https.
             `
         }
     },

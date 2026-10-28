@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2014-2026 GraphDefined GmbH <achim.friedland@graphdefined.com>
  * This file is part of Gateway <https://github.com/OpenChargingCloud/Gateway>
  *
@@ -203,8 +203,9 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// A certificates directory beside the configuration file, with one
-        /// directory for each of the four kinds of TLS and none for the seven of
-        /// ISO 15118 - and the log saying what is in it.
+        /// directory for each of the four kinds of TLS and for the identity the
+        /// web interface shows over HTTPS, and none for the seven of ISO 15118 -
+        /// and the log saying what is in it.
         /// </summary>
         /// <remarks>
         /// A gateway kept none, until the time servers and name servers it asks
@@ -233,10 +234,10 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
 
-                Assert.That(gateway!.Certificates.Kinds,      Is.EqualTo(CertificateKindExtensions.TLS));
+                Assert.That(gateway!.Certificates.Kinds,      Is.EqualTo(CertificateKindExtensions.TLS.Append(CertificateKind.TLSServerIdentity)));
                 Assert.That(gateway!.Certificates.Directory,  Is.EqualTo(Path.GetFullPath(store)), "beside the configuration file");
 
-                foreach (var kind in CertificateKindExtensions.TLS)
+                foreach (var kind in Gateway.CertificateKinds)
                     Assert.That(Directory.Exists(KindsDirectory(kind)),  Is.True,   kind.AsText());
 
                 foreach (var kind in CertificateKindExtensions.ISO15118)

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2014-2026 GraphDefined GmbH <achim.friedland@graphdefined.com>
  * This file is part of Gateway <https://github.com/OpenChargingCloud/Gateway>
  *
@@ -139,14 +139,16 @@ namespace cloud.charging.open.Gateway.Tests
         #region TheStoreSaysWhichOfAGatewaysKindsIsToldWhatItIsFor()
 
         /// <summary>
-        /// The four kinds of TLS and none of a vehicle's, in their three
-        /// groups - and of them the two a page offers what they may be for, a
-        /// TLS root and a server certificate, offered the services a gateway
-        /// has; not a client root, which nothing here uses yet, and not an
-        /// identity, since a gateway names no listener one could be shown on.
-        /// Any of them may still be marked with a usage made up. The roots and
-        /// the server certificates are on the Certificates page, the identity
-        /// - who a gateway is as a client - on the Identities page.
+        /// The four kinds of TLS, the identity the web interface shows over
+        /// HTTPS, and none of a vehicle's, in their three groups - and of them
+        /// the two a page offers what they may be for, a TLS root and a server
+        /// certificate, offered the services a gateway has; not a client root,
+        /// which nothing here uses yet, and not an identity as a client, since
+        /// a gateway names no listener one could be shown on. Any of them may
+        /// still be marked with a usage made up. The roots and the server
+        /// certificates are on the Certificates page, the identity - who a
+        /// gateway is as a client - on the Identities page, and what its web
+        /// interface shows on the Server identities page.
         /// </summary>
         /// <remarks>
         /// What every node says of its store - that the answer is the store's
@@ -162,7 +164,7 @@ namespace cloud.charging.open.Gateway.Tests
             Assert.Multiple(() => {
 
                 Assert.That(((JObject) store["kinds"]!).Properties().Select(kind => kind.Name),
-                            Is.EqualTo(new[] { "tlsRoot", "clientRoot", "tlsServer", "tlsIdentity" }),
+                            Is.EqualTo(new[] { "tlsRoot", "clientRoot", "tlsServer", "tlsIdentity", "tlsServerIdentity" }),
                             "the kinds this store keeps, and none of a vehicle's");
 
                 Assert.That(store["usages"]!.Values<String>(),                               Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer");
@@ -178,10 +180,12 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(store["kinds"]!["clientRoot"]!["page"]!.Value<String>(),         Is.EqualTo("certificates"));
                 Assert.That(store["kinds"]!["tlsServer"]!["page"]!.Value<String>(),          Is.EqualTo("certificates"));
                 Assert.That(store["kinds"]!["tlsIdentity"]!["page"]!.Value<String>(),        Is.EqualTo("identities"),
-                            "who a gateway is as a client is on the Identities page, with its key - and nothing on Server identities, a gateway keeping no server identity");
+                            "who a gateway is as a client is on the Identities page, with its key");
+                Assert.That(store["kinds"]!["tlsServerIdentity"]!["page"]!.Value<String>(),  Is.EqualTo("serverIdentities"),
+                            "what the web interface shows over HTTPS is on the Server identities page");
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                         Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
-                Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity" }));
+                Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity", "tlsServerIdentity" }));
                 Assert.That(store["recognised"]!.Values<String>(),                           Is.EqualTo(new[] { "tlsServer" }),
                             "a server certificate is recognised, neither believed nor presented");
 
