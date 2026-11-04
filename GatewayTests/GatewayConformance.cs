@@ -41,13 +41,28 @@ namespace cloud.charging.open.Gateway.Tests
     /// certificate store and the web interface. This suite had copies of the
     /// event stream's tests, of the learned pins, of most of the certificate
     /// store's and of a role from the configuration file, and none of the
-    /// rest.
+    /// rest. The log files over SFTP are asked of a gateway writing them.
     /// </remarks>
     public class GatewayConformance : NodeConformanceTests
     {
 
         protected override WWCPNode NewNode(String   Directory,
                                             JObject  Configuration)
+
+            => Made(Directory, Configuration, null);
+
+        protected override WWCPNode NewNodeWritingLogFiles(String   Directory,
+                                                           JObject  Configuration,
+                                                           String   LogPath)
+
+            => Made(Directory, Configuration, LogPath);
+
+        /// <summary>
+        /// A gateway, writing log files where it is given a directory for them.
+        /// </summary>
+        private static Gateway Made(String   Directory,
+                                    JObject  Configuration,
+                                    String?  LogPath)
         {
 
             var file = Path.Combine(Directory, WWCPConfigFile.DefaultFileName);
@@ -59,6 +74,7 @@ namespace cloud.charging.open.Gateway.Tests
                        AccountsPath:      Path.Combine(Directory, "accounts"),
                        ConfigFile:        new WWCPConfigFile(file),
                        CertificatesPath:  Path.Combine(Directory, "certificates"),
+                       LogPath:           LogPath,
                        LogToConsole:      false,
                        BridgeDebugLog:    false
                    );
