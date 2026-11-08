@@ -226,7 +226,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "operator", WWCPNode.AdminRole }));
-                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates", "ssh" }));
+                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates", "ssh", "log" }));
             });
 
         }
@@ -252,6 +252,7 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("viewer",       "certificates:edit",   false)]
         [TestCase("viewer",       "ssh:read",            true)]
         [TestCase("viewer",       "ssh:edit",            false)]
+        [TestCase("viewer",       "log:read",            true)]
 
         [TestCase("operator",     "configuration:read",  true)]
         [TestCase("operator",     "dns:read",            true)]
