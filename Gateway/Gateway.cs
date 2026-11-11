@@ -31,6 +31,8 @@ using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.SecureShell;
 
+using cloud.charging.open.Gateway.CommandLine;
+
 #endregion
 
 namespace cloud.charging.open.Gateway
@@ -230,6 +232,16 @@ namespace cloud.charging.open.Gateway
                            APIPath:     this.HTTPRootPath,
                            Version:     Version
                        );
+
+            #endregion
+
+            #region What somebody signed in over SSH gets
+
+            // A gateway's command line, with its commands beside the node's -
+            // whichever program runs this gateway, and not only GatewayCLI.
+            // Before the node starts, as the node asks; a program with a
+            // command line of its own sets another after this.
+            CommandLines = (terminal, caller) => new GatewayCLI(this, terminal, caller);
 
             #endregion
 
