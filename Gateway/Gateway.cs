@@ -272,6 +272,16 @@ namespace cloud.charging.open.Gateway
 
             gw01 = BuildOCPPNode(this.OCPP);
 
+            // What only the CSMS asks - SetVariables, Reset and the like - over
+            // the gateway's line up to it, and from no station; and what a
+            // station sends on, up to the CSMS in its own name, and to no other
+            // station (OCPPServingNode.Gates.cs).
+            AttachRequestGate(gw01);
+            AttachForwardingGate(gw01);
+
+            // Who may sign what is sent to this gateway itself.
+            AttachSignaturePolicy(gw01);
+
             // "this." and not for tidiness: the parameters of this constructor
             // shadow the properties of the same name, and the "Log" parameter is
             // null whenever the caller did not bring an event log of its own.
@@ -287,6 +297,10 @@ namespace cloud.charging.open.Gateway
             // configuration file, because what it listens on is written there.
             // Nothing listens yet: Start() does.
             BuildStationServer();
+
+            // OCPPServerController: that server, for the CSMS to read and to
+            // write as the page does - "stations", see ResourceOfComponent.
+            AttachOCPPServerController(gw01);
 
             #endregion
 
