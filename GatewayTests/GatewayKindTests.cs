@@ -163,8 +163,10 @@ namespace cloud.charging.open.Gateway.Tests
         #region AGatewayMakesTheGroupsOfItsOwnRoles()
 
         /// <summary>
-        /// Viewer, operator and system administrator - and neither of the two
-        /// the node would make for a vehicle.
+        /// Viewer, support, operator and system administrator - and neither of
+        /// the two the node would make for a vehicle. The support is every
+        /// node's since WWCP_Node baf880e: it sees what is going on and restarts
+        /// an idle node.
         /// </summary>
         [Test]
         public async Task AGatewayMakesTheGroupsOfItsOwnRoles()
@@ -173,7 +175,7 @@ namespace cloud.charging.open.Gateway.Tests
             await StartedGateway();
 
             Assert.That(gateway!.ExtAPI.UserGroups.Select(group => group.Id.ToString()),
-                        Is.EquivalentTo(new[] { "viewer", "operator", "systemadmin" }));
+                        Is.EquivalentTo(new[] { "viewer", "support", "operator", "systemadmin" }));
 
         }
 
@@ -184,7 +186,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// <summary>
         /// The cards the Configuration page shows, in the order it shows them:
         /// the gateway's own first, then what the node below says of itself,
-        /// and the assemblies last.
+        /// who the gateway is in OCPP, and the assemblies last.
         /// </summary>
         [Test]
         public async Task TheConfigurationPageStillLeadsWithTheGateway()
@@ -193,7 +195,7 @@ namespace cloud.charging.open.Gateway.Tests
             await StartedGateway();
 
             Assert.That(gateway!.ConfigurationJSON().Properties().Select(card => card.Name),
-                        Is.EqualTo(new[] { "gateway", "http", "web", "log", "time", "assemblies" }));
+                        Is.EqualTo(new[] { "gateway", "http", "web", "log", "time", "ocpp", "assemblies" }));
 
         }
 

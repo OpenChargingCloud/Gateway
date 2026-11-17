@@ -2,7 +2,7 @@ import { api } from '../api/client';
 import { cardView, librariesCardView } from '@node/cardViews';
 import type { Page } from '@node/router';
 import { reloadButton, shell } from '@node/shell';
-import { errorMessage, formatSince } from '@node/ui';
+import { errorMessage, formatSince, formatValue } from '@node/ui';
 import { html, render } from '@node/view';
 
 /**
@@ -60,6 +60,12 @@ export const configurationPage: Page = {
                         ${cardView('Accounts',      'fa-user-lock',        configuration.web)}
                         ${cardView('Event log',     'fa-list-ul',          configuration.log)}
                         ${cardView('Time',          'fa-clock',            configuration.time)}
+
+                        ${cardView(
+                            `OCPP ${formatValue(configuration.ocpp.version)} - ${formatValue(configuration.ocpp.role)}`,
+                            'fa-plug',
+                            configuration.ocpp
+                        )}
 
                         ${librariesCardView(configuration.assemblies)}
 

@@ -24,7 +24,7 @@ function gateway({ path }: Asked): unknown {
 
     if (path === '/configuration')
         return available
-                   ? { gateway: { name: 'gw001' }, http: { port: 3000 }, web: {}, log: {}, time: {},
+                   ? { gateway: { name: 'gw001' }, http: { port: 3000 }, web: {}, log: {}, time: {}, ocpp: { version: '2.1', role: 'Gateway', id: 'gw001' },
                        assemblies: [ { name: 'Gateway', version: '1.0', commit: 'abc1234' } ] }
                    : refused(500, 'the configuration file could not be read');
 
@@ -43,8 +43,9 @@ describe('the configuration', () => {
         const root = await open(configurationPage, '/configuration', [ 'configuration:read' ],
                                 gateway, root => root.querySelector('.cards') !== null);
 
-        assert.equal(root.querySelectorAll('.cards > section.card').length, 6);
+        assert.equal(root.querySelectorAll('.cards > section.card').length, 7);
         assert.match(root.querySelector('.cards')!.textContent!, /gw001/);
+        assert.match(root.querySelector('.cards')!.textContent!, /OCPP 2\.1 - Gateway/, 'the OCPP card is not drawn with its heading');
         assert.match(root.querySelector('.cards')!.textContent!, /Uptime\s+1 minute/);
         assert.doesNotMatch(root.textContent!, /<section|<div/, 'a card was taken as text');
 
@@ -57,7 +58,7 @@ describe('the configuration', () => {
         await until(() => /Uptime\s+2 minutes/.test(root.textContent!), 'Reload did not draw what the gateway says then');
 
         assert.equal(configurationsAsked(), 2, 'Reload did not ask the gateway again');
-        assert.equal(root.querySelectorAll('.cards > section.card').length, 6);
+        assert.equal(root.querySelectorAll('.cards > section.card').length, 7);
 
     });
 

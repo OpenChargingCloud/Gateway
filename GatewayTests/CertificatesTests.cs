@@ -142,7 +142,8 @@ namespace cloud.charging.open.Gateway.Tests
         /// The four kinds of TLS, the identity the web interface shows over
         /// HTTPS, and none of a vehicle's, in their three groups - and of them
         /// the two a page offers what they may be for, a TLS root and a server
-        /// certificate, offered the services a gateway has; not a client root,
+        /// certificate, offered the services a gateway has - the name servers,
+        /// the time servers and the servers of its OCPP connections; not a client root,
         /// which nothing here uses yet, and not an identity as a client, since
         /// a gateway names no listener one could be shown on. Any of them may
         /// still be marked with a usage made up. The roots and the server
@@ -167,10 +168,10 @@ namespace cloud.charging.open.Gateway.Tests
                             Is.EqualTo(new[] { "tlsRoot", "clientRoot", "tlsServer", "tlsIdentity", "tlsServerIdentity" }),
                             "the kinds this store keeps, and none of a vehicle's");
 
-                Assert.That(store["usages"]!.Values<String>(),                               Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer");
+                Assert.That(store["usages"]!.Values<String>(),                               Is.EqualTo(new[] { "dns", "nts", "ocpp" }), "what a page may offer");
 
-                Assert.That(store["kinds"]!["tlsRoot"]!["usages"]!.Values<String>(),         Is.EqualTo(new[] { "dns", "nts" }), "what a page may offer a root");
-                Assert.That(store["kinds"]!["tlsServer"]!["usages"]!.Values<String>(),       Is.EqualTo(new[] { "dns", "nts" }));
+                Assert.That(store["kinds"]!["tlsRoot"]!["usages"]!.Values<String>(),         Is.EqualTo(new[] { "dns", "nts", "ocpp" }), "what a page may offer a root");
+                Assert.That(store["kinds"]!["tlsServer"]!["usages"]!.Values<String>(),       Is.EqualTo(new[] { "dns", "nts", "ocpp" }));
                 Assert.That(store["kinds"]!["clientRoot"]!["usages"]!.Children().Any(),      Is.False,
                             "nothing here uses a client root yet, so a page offers it nothing");
                 Assert.That(store["kinds"]!["tlsIdentity"]!["usages"]!.Children().Any(),     Is.False,

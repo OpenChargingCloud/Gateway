@@ -22,6 +22,8 @@ using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using cloud.charging.open.protocols.WWCP.Node.Logging;
 using cloud.charging.open.protocols.WWCP.Node.Web;
 
+using cloud.charging.open.protocols.OCPP.Node;
+
 #endregion
 
 namespace cloud.charging.open.Gateway
@@ -29,21 +31,22 @@ namespace cloud.charging.open.Gateway
 
     /// <summary>
     /// The JSON API the browser talks to, registered at "/api": what every
-    /// node has - see <see cref="NodeHTTPAPI"/> - and, once there is any, what
-    /// only a gateway has.
+    /// node has - see <see cref="NodeHTTPAPI"/> - what every node that dials a
+    /// CSMS has - see <see cref="OCPPDiallingHTTPAPI"/> - and, once there is
+    /// any, what only a gateway has.
     /// </summary>
     /// <remarks>
     /// The sign-in, the status and the clock, the configuration, name
     /// resolution and the time servers, the certificate store, the log and the
     /// event stream are the node's, as they are the vehicle's and the local
-    /// controller's; this class used to have its own copy of all of them. A
-    /// gateway adds no route of its own yet - what it is for, handing frames
-    /// on between charging stations and whatever they talk to, is not here -
-    /// and says nothing beyond what every node says: its status is every
-    /// node's, its clock and its log need a sign-in and nothing more, and its
-    /// certificate store keeps nothing a gateway would be using.
+    /// controller's; this class used to have its own copy of all of them. The
+    /// connections, what they prove themselves with, the SSH keys, the state
+    /// of each connection and the test of one are those of every node that
+    /// dials, at the same routes as on a charging station and a local
+    /// controller, under the resource "connections". A gateway adds no route of
+    /// its own yet.
     /// </remarks>
-    public class GatewayHTTPAPI : NodeHTTPAPI
+    public class GatewayHTTPAPI : OCPPDiallingHTTPAPI
     {
 
         #region Properties
@@ -77,6 +80,7 @@ namespace cloud.charging.open.Gateway
                    Gateway,
                    ExtAPI,
                    Log,
+                   GatewayAccess.Connections,
                    APIPath,
                    Version ?? typeof(GatewayHTTPAPI).Assembly.GetName().Version?.ToString(3) ?? "0.0.0")
 

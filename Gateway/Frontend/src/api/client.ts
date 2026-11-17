@@ -12,16 +12,18 @@ import { nodeAPI,
 // What every node answers - the log, name resolution, the time, the store,
 // who is signed in - and how it is asked are WWCP_Node's, and every page here
 // reads them from this module as before. What follows is what a gateway says
-// of its own: its configuration's own section and the kinds its store keeps.
-// It has no routes of its own yet; the OCPP forwarding will bring the first.
+// of its own: its resource, its configuration's own sections and the kinds its
+// store keeps. Its connections are asked as every node that dials asks for
+// them - WWCP_OCPP_Node's connectionsAPI, used by the pages of "@ocpp/...".
 export * from '@node/api/client';
 
 
 /**
  * What a role may be allowed to touch on this gateway: what every node has,
- * for a gateway adds nothing of its own yet.
+ * and its connections - where it dials, what it proves itself with there and
+ * where each stands - under the name a charging station gives them.
  */
-export type Resource = NodeResource;
+export type Resource = NodeResource | 'connections';
 
 /** What somebody signed in to this gateway may do: an operation on a resource, written "dns:edit". */
 export type Permission = `${Resource}:${Operation}`;
@@ -40,6 +42,7 @@ export type Status = NodeStatus;
  */
 export interface Configuration extends NodeConfiguration {
     gateway:  Record<string, unknown>;
+    ocpp:     Record<string, unknown>;
 }
 
 /**

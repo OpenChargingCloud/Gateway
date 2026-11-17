@@ -6,3 +6,8 @@
     $color-accent:       #1b7f4d,
     $color-accent-dark:  #14633c
 );
+
+// The connections, what they sign in with and the SSH keys among the client
+// identities are drawn by the pages of WWCP_OCPP_Node, as on a charging
+// station and a local controller, and look as they do there.
+@use '@ocpp/styles/connections';

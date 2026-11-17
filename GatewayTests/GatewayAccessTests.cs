@@ -211,22 +211,24 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
 
-        #region AGatewayKnowsTheNodesResourcesAndItsThreeRoles()
+        #region AGatewayKnowsTheNodesResourcesItsConnectionsAndFourRoles()
 
         /// <summary>
-        /// The node brings the viewer and the administrators, and the gateway
-        /// its operator - and nothing of its own to be allowed, beside what
-        /// every node has.
+        /// The node brings the viewer, the support and the administrators, and
+        /// the gateway its operator - and one resource of its own beside what
+        /// every node has: its connections.
         /// </summary>
         [Test]
-        public void AGatewayKnowsTheNodesResourcesAndItsThreeRoles()
+        public void AGatewayKnowsTheNodesResourcesItsConnectionsAndFourRoles()
         {
 
             var node = GatewayFrom();
 
             Assert.Multiple(() => {
-                Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "operator", WWCPNode.AdminRole }));
-                Assert.That(node.Access.Resources,  Is.EqualTo(new[] { "configuration", "dns", "nts", "certificates", "ssh", "log" }));
+                Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "support", "operator", WWCPNode.AdminRole }));
+                Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections)));
+                Assert.That(GatewayAccess.Connections, Is.EqualTo("connections"),
+                            "the pages of the connections ask for it under the name a charging station gives it");
             });
 
         }
@@ -240,7 +242,9 @@ namespace cloud.charging.open.Gateway.Tests
         /// permission: the viewer looks, the operator also asks the name and
         /// time servers, and only the administrators repoint them - or change
         /// the certificates they are held to, or the SSH server, which
-        /// everybody may look at.
+        /// everybody may look at. And the connections: everybody looks at them,
+        /// the operator tests one too, and only the administrators repoint the
+        /// gateway at another CSMS or change what it signs in with.
         /// </summary>
         [TestCase("viewer",       "configuration:read",  true)]
         [TestCase("viewer",       "dns:read",            true)]
@@ -253,6 +257,9 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("viewer",       "ssh:read",            true)]
         [TestCase("viewer",       "ssh:edit",            false)]
         [TestCase("viewer",       "log:read",            true)]
+        [TestCase("viewer",       "connections:read",    true)]
+        [TestCase("viewer",       "connections:run",     false)]
+        [TestCase("viewer",       "connections:edit",    false)]
 
         [TestCase("operator",     "configuration:read",  true)]
         [TestCase("operator",     "dns:read",            true)]
@@ -264,12 +271,17 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("operator",     "certificates:edit",   false)]
         [TestCase("operator",     "ssh:read",            true)]
         [TestCase("operator",     "ssh:edit",            false)]
+        [TestCase("operator",     "connections:read",    true)]
+        [TestCase("operator",     "connections:run",     true)]
+        [TestCase("operator",     "connections:edit",    false)]
 
         [TestCase("systemadmin",  "dns:edit",            true)]
         [TestCase("systemadmin",  "nts:edit",            true)]
         [TestCase("systemadmin",  "nts:run",             true)]
         [TestCase("systemadmin",  "certificates:edit",   true)]
         [TestCase("systemadmin",  "ssh:edit",            true)]
+        [TestCase("systemadmin",  "connections:edit",    true)]
+        [TestCase("systemadmin",  "connections:run",     true)]
         public void EachRoleMayDoWhatItAlwaysMayDo(String Role, String Permission, Boolean Allowed)
         {
 
@@ -388,6 +400,43 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(after["enabled"]!.Value<Boolean>(), Is.EqualTo(before["enabled"]!.Value<Boolean>()), "the server was switched");
                 Assert.That(after["port"]?.ToString(),          Is.EqualTo(before["port"]?.ToString()),          "the server was moved");
                 Assert.That(File.ReadAllText(file),             Is.EqualTo(fileBefore),                          "the refused change reached the file");
+            });
+
+        }
+
+        #endregion
+
+        #region AnOperatorMayLookAtTheConnectionsAndIsToldWhoMayChangeThem()
+
+        /// <summary>
+        /// The connections as a browser signed in as an operator sees them, at
+        /// the routes every node that dials has: they open, and writing one
+        /// down is refused with the role to ask for - and nothing refused
+        /// reached the store.
+        /// </summary>
+        [Test]
+        public async Task AnOperatorMayLookAtTheConnectionsAndIsToldWhoMayChangeThem()
+        {
+
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
+
+            using var @operator  = await SignedInAs("operator4", "operator");
+
+            var looked           = await @operator.GetAsync("api/v1/configuration/connections");
+            var written          = await @operator.PostAsync("api/v1/configuration/connections",
+                                                             new StringContent("""{ "description": "CSMS", "url": "ws://127.0.0.1:1/gw001", "connectionType": "CSMS" }""",
+                                                                               Encoding.UTF8, "application/json"));
+            var refusal          = await written.Content.ReadAsStringAsync();
+            var me               = JObject.Parse(await (await @operator.GetAsync("api/v1/auth/me")).Content.ReadAsStringAsync());
+            var permissions      = me["permissions"]!.Values<String>().OfType<String>().ToArray();
+
+            Assert.Multiple(() => {
+                Assert.That(looked.StatusCode,               Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(written.StatusCode,              Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(refusal,                         Does.Contain("This needs the systemadmin role."));
+                Assert.That(permissions,                     Does.Contain("connections:read").And.Contain("connections:run"));
+                Assert.That(permissions,                     Does.Not.Contain("connections:edit"));
+                Assert.That(gateway!.Connections.Connections, Is.Empty, "the refused connection reached the store");
             });
 
         }

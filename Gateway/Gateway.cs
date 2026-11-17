@@ -31,7 +31,10 @@ using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.SecureShell;
 
+using cloud.charging.open.protocols.OCPP.Node;
+
 using cloud.charging.open.Gateway.CommandLine;
+using cloud.charging.open.Gateway.Configuration;
 
 #endregion
 
@@ -49,16 +52,23 @@ namespace cloud.charging.open.Gateway
     /// browser and the gateway talk over the JSON API and one Server-Sent
     /// Events stream; nothing is rendered on the server.
     ///
-    /// What a gateway is for - taking WebSocket frames from one side and
-    /// handing them on to the other - is not here yet. What is here is what
-    /// every program of this family has before it does anything of its own -
-    /// the sign-in, the name servers, the time servers, the certificates they
-    /// are held to and the log, and the JSON API that serves them - and that is
-    /// the node below, which the gateway shares with the vehicle. What is the
-    /// gateway's own is its names, its port, its roles and the kinds of
-    /// certificate it keeps; its JSON API adds nothing to the node's yet.
+    /// A gateway is an OCPP node as a charging station and a local controller
+    /// are: it dials its CSMS - one or several - over the connections written
+    /// down on its Connections page, with the credentials and client
+    /// identities they name, and follows, believes, lets go of and dials them
+    /// again as they do, because that is OCPPDiallingNode's and the same for
+    /// all three (see Gateway.Dialling.cs). Below that is what every program
+    /// of this family has - the sign-in, the name servers, the time servers,
+    /// the certificates and the log, and the JSON API that serves them - which
+    /// is the WWCP node.
+    ///
+    /// Not here yet: the server the charging stations and local controllers
+    /// below a gateway connect to, and a CSMS that dials the gateway rather
+    /// than being dialled - both come with the server a local controller has,
+    /// once it is shared - and what a gateway is for, handing messages on from
+    /// one side to the other.
     /// </remarks>
-    public class Gateway : WWCPNode
+    public partial class Gateway : OCPPDiallingNode
     {
 
         #region Data
@@ -129,7 +139,13 @@ namespace cloud.charging.open.Gateway
         /// <summary>
         /// The JSON API the browser talks to.
         /// </summary>
-        public GatewayHTTPAPI  API  { get; }
+        public GatewayHTTPAPI     API   { get; }
+
+        /// <summary>
+        /// Who this gateway says it is when it speaks OCPP: the "ocpp" section
+        /// of its configuration file, or what it was given.
+        /// </summary>
+        public OCPPConfiguration  OCPP  { get; }
 
         #endregion
 
@@ -158,6 +174,7 @@ namespace cloud.charging.open.Gateway
         /// <param name="TimeProvider">The clock, or null for the system one.</param>
         /// <param name="SSH">What the program says about serving the command line over SSH; nothing by default - see SSHSettings.</param>
         /// <param name="Web">What the program says of HTTPS and of the reverse proxies in front - --https, --https-cert, --redirect-port and --trusted-proxy - over the "web" section of the configuration file; nothing by default, and then the file alone says it.</param>
+        /// <param name="OCPP">Who this gateway says it is when it speaks OCPP, where the "ocpp" section of the configuration file says nothing; see <see cref="OCPPConfiguration"/>.</param>
         public Gateway(IIPAddress?            HTTPHostname       = null,
                        IPPort?                HTTPPort           = null,
                        HTTPServer?            HTTPServer         = null,
@@ -177,7 +194,8 @@ namespace cloud.charging.open.Gateway
                        Boolean                BridgeDebugLog     = true,
                        TimeProvider?          TimeProvider       = null,
                        SSHSettings?           SSH                = null,
-                       WebConfiguration?      Web                = null)
+                       WebConfiguration?      Web                = null,
+                       OCPPConfiguration?     OCPP               = null)
 
             : base(Kind:               GatewayKind,
                    Version:            typeof(Gateway).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
@@ -196,6 +214,21 @@ namespace cloud.charging.open.Gateway
                    Frontend:           Frontend ?? new EmbeddedContentSource(HTTPRoot, typeof(Gateway).Assembly),
                    CertificatesPath:   CertificatesPath,
                    CertificateKinds:   CertificateKinds,
+
+                   // Beside "dns" and "nts": a TLS root may vouch for the
+                   // servers of the OCPP connections and for nothing else -
+                   // see OCPPDiallingNode.ServerPins.cs - as on a charging
+                   // station.
+                   CertificateUsages:  [ OCPPCertificateUsage ],
+
+                   // Who the gateway is to a CSMS it dials may be made here: a
+                   // key, a signing request, and the certificate that comes
+                   // back for it. The key never leaves. And who its own web
+                   // interface is, as a charging station and a local
+                   // controller do it: a key made here need not be carried to
+                   // the gateway.
+                   CertificateRequestKinds: [ CertificateKind.TLSIdentity, CertificateKind.TLSServerIdentity ],
+
                    Log:                Log,
                    LogToConsole:       LogToConsole,
                    ConsoleLogLevel:    ConsoleLogLevel,
@@ -210,6 +243,38 @@ namespace cloud.charging.open.Gateway
                    Web:                Web)
 
         {
+
+            #region Who this gateway says it is
+
+            // Its own section of the document the node below has already read.
+            // A section that is wrong stops the gateway here: somebody wrote down
+            // who it is and got it wrong, and quietly running as somebody else
+            // would be worse than stopping.
+            if (!OCPPConfiguration.TryRead(ConfigurationDocument, out var ocpp, out var problem))
+                throw new InvalidOperationException($"'{this.ConfigFile.Path}': {problem} Repair or remove '{this.ConfigFile.Path}' and start again.");
+
+            this.OCPP = ocpp.IsEmpty
+                            ? OCPP ?? ocpp
+                            : ocpp;
+
+            #endregion
+
+            #region What it dials, and the OCPP node it dials with
+
+            // Before anything asks for them: the HTTP API below reads the
+            // connections. Nothing is dialled yet: Start() does.
+            BuildConnectionStores();
+
+            gw01 = BuildOCPPNode(this.OCPP);
+
+            // "this." and not for tidiness: the parameters of this constructor
+            // shadow the properties of the same name, and the "Log" parameter is
+            // null whenever the caller did not bring an event log of its own.
+            this.Log.Info($"OCPP 2.1 gateway '{gw01.Id}' is set up as {gw01.VendorName} {gw01.Model}; " +
+                          $"{Connections.Connections.Count(connection => connection.AutoConnect)} of its {Connections.Connections.Count} connections are dialled by themselves.",
+                          "ocpp");
+
+            #endregion
 
             #region The JSON API
 
@@ -253,16 +318,34 @@ namespace cloud.charging.open.Gateway
         #region (protected override) OnStarted()
 
         /// <summary>
-        /// What a gateway says once it is up: where its API is.
+        /// What a gateway says and does once it is up: where its API is, and
+        /// then its CSMS.
         /// </summary>
-        protected override Task OnStarted()
+        /// <remarks>
+        /// After the web interface, so that a gateway whose CSMS is unreachable
+        /// is still a gateway whoever is watching the Logs page sees dialling
+        /// out - and the page where the address that was wrong is put right. A
+        /// CSMS that does not answer is logged and shown, not fatal.
+        /// </remarks>
+        protected override async Task OnStarted()
         {
 
             Log.Info($"The JSON API is at {APIURL}v1/status", "web", "http");
 
-            return Task.CompletedTask;
+            await DialConfiguredConnections();
 
         }
+
+        #endregion
+
+        #region (protected override) OnStopping()
+
+        /// <summary>
+        /// Hang up what this gateway dialled before the server stops.
+        /// </summary>
+        protected override Task OnStopping()
+
+            => HangUp();
 
         #endregion
 
@@ -287,6 +370,24 @@ namespace cloud.charging.open.Gateway
                               new JProperty("runtime",        Environment.Version.ToString()),
                               new JProperty("os",             Environment.OSVersion.ToString())
                           )));
+
+            // Who it is in OCPP, as a local controller says it of itself - in
+            // the order the page draws it, before the assemblies.
+            var ocpp = new JProperty("ocpp",     new JObject(
+                         new JProperty("version",          "2.1"),
+                         new JProperty("role",             "Gateway"),
+                         new JProperty("id",               gw01.Id.ToString()),
+                         new JProperty("vendor",           gw01.VendorName),
+                         new JProperty("model",            gw01.Model),
+                         new JProperty("serialNumber",     gw01.SerialNumber),
+                         new JProperty("softwareVersion",  gw01.SoftwareVersion),
+                         new JProperty("file",             ConfigFile.Path)
+                     ));
+
+            if (json.Property("assemblies") is JProperty assemblies)
+                assemblies.AddBeforeSelf(ocpp);
+            else
+                json.Add(ocpp);
 
             return json;
 

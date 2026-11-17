@@ -14,6 +14,14 @@
     <ProjectReference Include="..\..\Styx\Styx\Styx.csproj" />
     <ProjectReference Include="..\..\Urdr\Urdr\Urdr.csproj" />
     <ProjectReference Include="..\..\WWCP_Node\WWCP_Node\WWCP_Node.csproj" />
+    <!-- OCPP: the node a gateway speaks OCPP 2.1 through, and what every node
+         that dials a CSMS shares with a charging station and a local
+         controller - its connections, what they prove themselves with, how
+         they are dialled and followed. -->
+    <ProjectReference Include="..\..\WWCP_OCPP\WWCP_OCPP_Common\WWCP_OCPP_Common.csproj" />
+    <ProjectReference Include="..\..\WWCP_OCPP\WWCP_OCPPv2.1\WWCP_OCPPv2.1.csproj" />
+    <ProjectReference Include="..\..\WWCP_OCPP\WWCP_OCPPv2.1_Gateway\WWCP_OCPPv2.1_Gateway.csproj" />
+    <ProjectReference Include="..\..\WWCP_OCPP\WWCP_OCPP_Node\WWCP_OCPP_Node.csproj" />
   </ItemGroup>
 
   <!--
@@ -56,6 +64,9 @@
          here, a new WWCP_Node changed only files the build did not look at,
          the bundle was up to date, and the old one was embedded. -->
     <FrontendInput Include="$(MSBuildProjectDirectory)\..\..\WWCP_Node\Frontend\src\**\*" />
+    <!-- And what every node that dials a CSMS shares, bundled in as "@ocpp/...":
+         the pages of its connections, for the same reason. -->
+    <FrontendInput Include="$(MSBuildProjectDirectory)\..\..\WWCP_OCPP\WWCP_OCPP_Node\Frontend\src\**\*" />
   </ItemGroup>
 
   <!-- npm keeps a copy of the lock file it last installed by, in

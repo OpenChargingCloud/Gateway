@@ -34,10 +34,9 @@ namespace cloud.charging.open.Gateway
     /// administrators, who may do everything and are the only ones who may
     /// change anything - the certificates included, where that matters most:
     /// somebody who can add a root can make this gateway believe a time server
-    /// or a name server nobody else would. A gateway adds no resource of its
-    /// own yet - what it is for, handing frames on between charging stations
-    /// and whatever they talk to, is not here - and one role: the operator,
-    /// who runs it day to day.
+    /// or a name server nobody else would. A gateway adds one resource - its
+    /// connections, under the name a charging station gives them - and one
+    /// role: the operator, who runs it day to day.
     /// </para>
     /// <para>
     /// The configuration file may add roles to these and say differently what
@@ -51,10 +50,19 @@ namespace cloud.charging.open.Gateway
         #region Resources
 
         /// <summary>
-        /// None of its own yet: its configuration, its name servers and its
-        /// time servers are resources every node has.
+        /// Where this gateway dials, what it proves itself with there - the
+        /// credentials, and the SSH keys made here - and where each connection
+        /// stands: edited, any of that changed; run, a connection tested. The
+        /// name and the meaning a charging station gives it, which the pages of
+        /// the connections ask for.
         /// </summary>
-        public static readonly IReadOnlyList<String>  Resources = [];
+        public const String  Connections  = "connections";
+
+        /// <summary>
+        /// Its connections. Its configuration, its name servers, its time
+        /// servers and its certificates are resources every node has.
+        /// </summary>
+        public static readonly IReadOnlyList<String>  Resources = [ Connections ];
 
         #endregion
 
@@ -62,15 +70,18 @@ namespace cloud.charging.open.Gateway
 
         /// <summary>
         /// Whoever runs this gateway day to day: may look at everything and ask
-        /// whether the network works - but may not repoint it at other name and
-        /// time servers, may not change the certificates it holds them to, and
-        /// may not move its SSH server or let passwords open it.
+        /// whether the network works, and whether a connection would get
+        /// through - but may not repoint it at other name and time servers or
+        /// at another CSMS, may not change the certificates or the credentials
+        /// it holds them to, and may not move its SSH server or let passwords
+        /// open it.
         /// </summary>
         public static readonly Role  Operator  = new ("operator",
                                                       [ Permission.Read(Permission.AnyResource),
                                                         Permission.Run (NodeResources.DNS),
-                                                        Permission.Run (NodeResources.NTS) ],
-                                                      "runs the gateway day to day: looks at everything, and asks whether the network works");
+                                                        Permission.Run (NodeResources.NTS),
+                                                        Permission.Run (Connections) ],
+                                                      "runs the gateway day to day: looks at everything, and asks whether the network and its connections work");
 
         /// <summary>
         /// The one role a gateway adds to the node's viewer and administrators.
