@@ -211,24 +211,26 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
 
-        #region AGatewayKnowsTheNodesResourcesItsConnectionsAndFourRoles()
+        #region AGatewayKnowsTheNodesResourcesItsOwnTwoAndFourRoles()
 
         /// <summary>
         /// The node brings the viewer, the support and the administrators, and
-        /// the gateway its operator - and one resource of its own beside what
-        /// every node has: its connections.
+        /// the gateway its operator - and two resources of its own beside what
+        /// every node has: its connections, and the stations below it.
         /// </summary>
         [Test]
-        public void AGatewayKnowsTheNodesResourcesItsConnectionsAndFourRoles()
+        public void AGatewayKnowsTheNodesResourcesItsOwnTwoAndFourRoles()
         {
 
             var node = GatewayFrom();
 
             Assert.Multiple(() => {
                 Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "support", "operator", WWCPNode.AdminRole }));
-                Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections)));
+                Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections).Append(GatewayAccess.Stations)));
                 Assert.That(GatewayAccess.Connections, Is.EqualTo("connections"),
                             "the pages of the connections ask for it under the name a charging station gives it");
+                Assert.That(GatewayAccess.Stations,    Is.EqualTo("stations"),
+                            "the pages of the station server ask for it under the name a local controller gives it");
             });
 
         }
@@ -260,6 +262,8 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("viewer",       "connections:read",    true)]
         [TestCase("viewer",       "connections:run",     false)]
         [TestCase("viewer",       "connections:edit",    false)]
+        [TestCase("viewer",       "stations:read",       true)]
+        [TestCase("viewer",       "stations:edit",       false)]
 
         [TestCase("operator",     "configuration:read",  true)]
         [TestCase("operator",     "dns:read",            true)]
@@ -274,6 +278,8 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("operator",     "connections:read",    true)]
         [TestCase("operator",     "connections:run",     true)]
         [TestCase("operator",     "connections:edit",    false)]
+        [TestCase("operator",     "stations:read",       true)]
+        [TestCase("operator",     "stations:edit",       false)]
 
         [TestCase("systemadmin",  "dns:edit",            true)]
         [TestCase("systemadmin",  "nts:edit",            true)]
@@ -282,6 +288,7 @@ namespace cloud.charging.open.Gateway.Tests
         [TestCase("systemadmin",  "ssh:edit",            true)]
         [TestCase("systemadmin",  "connections:edit",    true)]
         [TestCase("systemadmin",  "connections:run",     true)]
+        [TestCase("systemadmin",  "stations:edit",       true)]
         public void EachRoleMayDoWhatItAlwaysMayDo(String Role, String Permission, Boolean Allowed)
         {
 

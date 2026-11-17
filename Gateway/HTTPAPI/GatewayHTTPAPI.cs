@@ -32,8 +32,9 @@ namespace cloud.charging.open.Gateway
     /// <summary>
     /// The JSON API the browser talks to, registered at "/api": what every
     /// node has - see <see cref="NodeHTTPAPI"/> - what every node that dials a
-    /// CSMS has - see <see cref="OCPPDiallingHTTPAPI"/> - and, once there is
-    /// any, what only a gateway has.
+    /// CSMS and serves the stations below it has - see
+    /// <see cref="OCPPServingHTTPAPI"/> - and, once there is any, what only a
+    /// gateway has.
     /// </summary>
     /// <remarks>
     /// The sign-in, the status and the clock, the configuration, name
@@ -43,10 +44,12 @@ namespace cloud.charging.open.Gateway
     /// connections, what they prove themselves with, the SSH keys, the state
     /// of each connection and the test of one are those of every node that
     /// dials, at the same routes as on a charging station and a local
-    /// controller, under the resource "connections". A gateway adds no route of
-    /// its own yet.
+    /// controller, under the resource "connections"; the station server, the
+    /// stations that may sign in to it, the certificates it presents and the
+    /// chains it accepts at the routes of a local controller, under "stations"
+    /// and "certificates". A gateway adds no route of its own yet.
     /// </remarks>
-    public class GatewayHTTPAPI : OCPPDiallingHTTPAPI
+    public class GatewayHTTPAPI : OCPPServingHTTPAPI
     {
 
         #region Properties
@@ -81,6 +84,7 @@ namespace cloud.charging.open.Gateway
                    ExtAPI,
                    Log,
                    GatewayAccess.Connections,
+                   GatewayAccess.Stations,
                    APIPath,
                    Version ?? typeof(GatewayHTTPAPI).Assembly.GetName().Version?.ToString(3) ?? "0.0.0")
 

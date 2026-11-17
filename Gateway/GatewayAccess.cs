@@ -34,9 +34,10 @@ namespace cloud.charging.open.Gateway
     /// administrators, who may do everything and are the only ones who may
     /// change anything - the certificates included, where that matters most:
     /// somebody who can add a root can make this gateway believe a time server
-    /// or a name server nobody else would. A gateway adds one resource - its
-    /// connections, under the name a charging station gives them - and one
-    /// role: the operator, who runs it day to day.
+    /// or a name server nobody else would. A gateway adds two resources - its
+    /// connections, under the name a charging station gives them, and the
+    /// stations below it, under the name a local controller gives them - and
+    /// one role: the operator, who runs it day to day.
     /// </para>
     /// <para>
     /// The configuration file may add roles to these and say differently what
@@ -59,10 +60,21 @@ namespace cloud.charging.open.Gateway
         public const String  Connections  = "connections";
 
         /// <summary>
-        /// Its connections. Its configuration, its name servers, its time
-        /// servers and its certificates are resources every node has.
+        /// The server the charging stations and local controllers below this
+        /// gateway connect to, and the stations that may sign in to it with
+        /// their login groups: read, looked at; edited, any of that changed. The
+        /// name and the meaning a local controller gives it, which the pages of
+        /// the station server ask for. The keys and certificates the server
+        /// presents and the chains it accepts are the node's "certificates".
         /// </summary>
-        public static readonly IReadOnlyList<String>  Resources = [ Connections ];
+        public const String  Stations     = "stations";
+
+        /// <summary>
+        /// Its connections and the stations below it. Its configuration, its
+        /// name servers, its time servers and its certificates are resources
+        /// every node has.
+        /// </summary>
+        public static readonly IReadOnlyList<String>  Resources = [ Connections, Stations ];
 
         #endregion
 

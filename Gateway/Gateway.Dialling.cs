@@ -139,6 +139,15 @@ namespace cloud.charging.open.Gateway
             Connections.KnownCertificateIds   = () => Certificates.ByKind(CertificateKind.TLSIdentity).Select(entry => entry.Id);
             Connections.OnNotice             += (level, message) => Log.Log(level, message, "ocpp", "connections");
 
+            // A CSMS that dials comes in over the port of the charging
+            // stations, under a name: one a charging station has is not free.
+            // Asked before the station server is built, as on a local
+            // controller, hence the "?".
+            Connections.WhyInboundNameIsTaken = name => StationLogins?.TryGet(name, out _) == true
+                                                            ? $"'{name}' is a charging station of this gateway, and a CSMS that dials comes in over the " +
+                                                              "same port: under that name the two could not be told apart at the door. Give it another name."
+                                                            : null;
+
             // What is written down is what is dialled, from the moment it is
             // written - once this gateway has started; see OCPPDiallingNode.Peers.cs.
             Connections.OnConnectionsChanged += () => _ = ApplyConnectionChanges();

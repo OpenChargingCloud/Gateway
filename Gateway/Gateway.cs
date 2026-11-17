@@ -62,13 +62,18 @@ namespace cloud.charging.open.Gateway
     /// the certificates and the log, and the JSON API that serves them - which
     /// is the WWCP node.
     ///
-    /// Not here yet: the server the charging stations and local controllers
-    /// below a gateway connect to, and a CSMS that dials the gateway rather
-    /// than being dialled - both come with the server a local controller has,
-    /// once it is shared - and what a gateway is for, handing messages on from
-    /// one side to the other.
+    /// And it is dialled, as a local controller is: by the charging stations
+    /// and local controllers below it, on its station server - its section
+    /// "ocppServer", the stations that may sign in and their login groups, the
+    /// chains a station's certificate may lead to and the keys and
+    /// certificates it presents, the same as a local controller's because they
+    /// are OCPPServingNode's (see Gateway.Serving.cs) - and by a CSMS it
+    /// cannot dial, on the same port, as a connection the other end makes.
+    ///
+    /// Not here yet: what a gateway is for, handing messages on from one side
+    /// to the other.
     /// </remarks>
-    public partial class Gateway : OCPPDiallingNode
+    public partial class Gateway : OCPPServingNode
     {
 
         #region Data
@@ -276,6 +281,15 @@ namespace cloud.charging.open.Gateway
 
             #endregion
 
+            #region The server the stations below it connect to
+
+            // After the node, because it is attached to it, and after the
+            // configuration file, because what it listens on is written there.
+            // Nothing listens yet: Start() does.
+            BuildStationServer();
+
+            #endregion
+
             #region The JSON API
 
             this.Log.Info(
@@ -338,14 +352,35 @@ namespace cloud.charging.open.Gateway
 
         #endregion
 
+        #region (protected override) OnListening()
+
+        /// <summary>
+        /// The port the charging stations connect to, beside the web
+        /// interface's - taken once the node below has its own port and before
+        /// it calls itself started, so that a gateway whose stations cannot
+        /// connect does not say it is up.
+        /// </summary>
+        protected override Task OnListening()
+
+            => StartOCPPServer();
+
+        #endregion
+
         #region (protected override) OnStopping()
 
         /// <summary>
-        /// Hang up what this gateway dialled before the server stops.
+        /// Hang up what this gateway dialled, and then close the port of the
+        /// stations below it - a station still connected has somewhere for its
+        /// last messages to go while the CSMS is let go of.
         /// </summary>
-        protected override Task OnStopping()
+        protected override async Task OnStopping()
+        {
 
-            => HangUp();
+            await HangUp();
+
+            await StopOCPPServer();
+
+        }
 
         #endregion
 
@@ -384,10 +419,20 @@ namespace cloud.charging.open.Gateway
                          new JProperty("file",             ConfigFile.Path)
                      ));
 
+            // And the server the stations below it connect to, as a local
+            // controller says it.
+            var stationServer = new JProperty("stationServer", StationServerJSON());
+
             if (json.Property("assemblies") is JProperty assemblies)
+            {
                 assemblies.AddBeforeSelf(ocpp);
+                assemblies.AddBeforeSelf(stationServer);
+            }
             else
+            {
                 json.Add(ocpp);
+                json.Add(stationServer);
+            }
 
             return json;
 

@@ -20,10 +20,12 @@ export * from '@node/api/client';
 
 /**
  * What a role may be allowed to touch on this gateway: what every node has,
- * and its connections - where it dials, what it proves itself with there and
- * where each stands - under the name a charging station gives them.
+ * its connections - where it dials, what it proves itself with there and
+ * where each stands - under the name a charging station gives them, and the
+ * stations below it - its station server and who may sign in to it - under
+ * the name a local controller gives them.
  */
-export type Resource = NodeResource | 'connections';
+export type Resource = NodeResource | 'connections' | 'stations';
 
 /** What somebody signed in to this gateway may do: an operation on a resource, written "dns:edit". */
 export type Permission = `${Resource}:${Operation}`;
@@ -41,8 +43,9 @@ export type Status = NodeStatus;
  * there are is the page's to say.
  */
 export interface Configuration extends NodeConfiguration {
-    gateway:  Record<string, unknown>;
-    ocpp:     Record<string, unknown>;
+    gateway:        Record<string, unknown>;
+    ocpp:           Record<string, unknown>;
+    stationServer:  Record<string, unknown>;
 }
 
 /**

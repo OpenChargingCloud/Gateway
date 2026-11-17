@@ -186,7 +186,8 @@ namespace cloud.charging.open.Gateway.Tests
         /// <summary>
         /// The cards the Configuration page shows, in the order it shows them:
         /// the gateway's own first, then what the node below says of itself,
-        /// who the gateway is in OCPP, and the assemblies last.
+        /// who the gateway is in OCPP and its station server, and the
+        /// assemblies last.
         /// </summary>
         [Test]
         public async Task TheConfigurationPageStillLeadsWithTheGateway()
@@ -195,7 +196,7 @@ namespace cloud.charging.open.Gateway.Tests
             await StartedGateway();
 
             Assert.That(gateway!.ConfigurationJSON().Properties().Select(card => card.Name),
-                        Is.EqualTo(new[] { "gateway", "http", "web", "log", "time", "ocpp", "assemblies" }));
+                        Is.EqualTo(new[] { "gateway", "http", "web", "log", "time", "ocpp", "stationServer", "assemblies" }));
 
         }
 
