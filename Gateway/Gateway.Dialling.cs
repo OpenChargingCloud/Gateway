@@ -42,7 +42,7 @@ namespace cloud.charging.open.Gateway
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Everything else is OCPPDiallingNode's, as it is a charging station's
+    /// Everything else is WWCPNode's, as it is a charging station's
     /// and a local controller's: the connections and what they prove
     /// themselves with, the identities of the certificate store they show,
     /// how a server is believed - by its CA or by its key pins - and how a
@@ -53,7 +53,7 @@ namespace cloud.charging.open.Gateway
     /// What a gateway does not say yet, and a local controller does: a
     /// networking mode, pings and timeouts of its own, and the device model a
     /// CSMS reads and writes the TLS and SSH clients of its lines through.
-    /// Until then a line is opened as OCPPDiallingNode opens one.
+    /// Until then a line is opened as OCPPDialling opens one.
     /// </para>
     /// </remarks>
     public partial class Gateway
@@ -131,7 +131,7 @@ namespace cloud.charging.open.Gateway
                           );
 
             keyPinning       = NewKeyPinning();
-            tlsClientSource  = NewTLSClientSource();
+            OCPPDialling.MakeTLSClientSource();
 
             // Which identities exist is the certificate store's business and
             // changes while this one is alive, so it is asked rather than told
@@ -149,7 +149,7 @@ namespace cloud.charging.open.Gateway
                                                             : null;
 
             // What is written down is what is dialled, from the moment it is
-            // written - once this gateway has started; see OCPPDiallingNode.Peers.cs.
+            // written - once this gateway has started; see WWCPNode.Peers.cs.
             Connections.OnConnectionsChanged += () => _ = ApplyConnectionChanges();
 
             SshKey = new SshClientKey(

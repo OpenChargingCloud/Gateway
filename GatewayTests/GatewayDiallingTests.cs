@@ -43,7 +43,7 @@ namespace cloud.charging.open.Gateway.Tests
     /// <remarks>
     /// <para>
     /// How a connection is dialled, believed and dialled again is
-    /// OCPPDiallingNode's, and tested in WWCP_OCPP_Node and by the station and
+    /// WWCPNode's, and tested in WWCP_OCPP_Node and by the station and
     /// the controller. What is tested here is that a gateway is such a node:
     /// that its store, its OCPP node and its start and stop are wired to it.
     /// </para>

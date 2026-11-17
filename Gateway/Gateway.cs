@@ -56,7 +56,7 @@ namespace cloud.charging.open.Gateway
     /// are: it dials its CSMS - one or several - over the connections written
     /// down on its Connections page, with the credentials and client
     /// identities they name, and follows, believes, lets go of and dials them
-    /// again as they do, because that is OCPPDiallingNode's and the same for
+    /// again as they do, because that is WWCPNode's and the same for
     /// all three (see Gateway.Dialling.cs). Below that is what every program
     /// of this family has - the sign-in, the name servers, the time servers,
     /// the certificates and the log, and the JSON API that serves them - which
@@ -222,7 +222,7 @@ namespace cloud.charging.open.Gateway
 
                    // Beside "dns" and "nts": a TLS root may vouch for the
                    // servers of the OCPP connections and for nothing else -
-                   // see OCPPDiallingNode.ServerPins.cs - as on a charging
+                   // see WWCPNode.ServerPins.cs - as on a charging
                    // station.
                    CertificateUsages:  [ OCPPCertificateUsage ],
 
