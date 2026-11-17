@@ -27,6 +27,7 @@ using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 using cloud.charging.open.protocols.OCPP.Node.Connections;
+using cloud.charging.open.protocols.OCPP.Node.Serving;
 
 #endregion
 
@@ -110,11 +111,21 @@ namespace cloud.charging.open.Gateway.Tests
         /// configuration file beside that - made, and not started.
         /// </summary>
         private Gateway AGateway(params JProperty[] Sections)
+
+            => AGatewayIn(_ => { }, Sections);
+
+        /// <summary>
+        /// A gateway as AGateway makes it, with its directory prepared first.
+        /// </summary>
+        private Gateway AGatewayIn(Action<String>      Prepare,
+                                   params JProperty[]  Sections)
         {
 
             var directory = Path.Combine(Path.GetTempPath(), "gateway-station-server-" + Guid.NewGuid().ToString("N")[..12]);
             Directory.CreateDirectory(directory);
             directories.Add(directory);
+
+            Prepare(directory);
 
             var file = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
 
@@ -193,6 +204,79 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region (helper) AGatewayTakingHTTP3(Port, WithAServerKey)
+
+        /// <summary>
+        /// A gateway whose station server is switched on, on the loopback at
+        /// the given port, on security profile 2 and with "http3": true - with
+        /// a server key the stations pin where told, and without one, so
+        /// unencrypted, where not - started.
+        /// </summary>
+        private async Task<Gateway> AGatewayTakingHTTP3(UInt16   Port,
+                                                        Boolean  WithAServerKey)
+        {
+
+            Gateway? gateway = null;
+
+            await TestPorts.StartedOnFreshPorts(() => gateway = AGatewayIn(
+                                                          directory => {
+
+                                                              if (!WithAServerKey)
+                                                                  return;
+
+                                                              using var store = new ServerCertificateStore(Path.Combine(directory, ServerCertificateStore.DefaultDirectoryName));
+
+                                                              Assert.That(store.TryCreateServerKey(null, false, out _, out _, out var error), Is.True, error);
+
+                                                          },
+                                                          new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-http3"))),
+                                                          new JProperty("ocppServer", new JObject(new JProperty("enabled",           true),
+                                                                                                  new JProperty("address",           "127.0.0.1"),
+                                                                                                  new JProperty("port",              Port),
+                                                                                                  new JProperty("securityProfiles",  new JArray(1, 2)),
+                                                                                                  new JProperty("http3",             true)))
+                                                      ));
+
+            return gateway!;
+
+        }
+
+        /// <summary>
+        /// A port free for UDP as for TCP: HTTP/3 comes to the UDP port of the
+        /// number of the TCP one.
+        /// </summary>
+        private static UInt16 APortFreeForBoth()
+        {
+
+            for (var attempt = 0; attempt < 200; attempt++)
+            {
+
+                var port = Random.Shared.Next(20000, 32768);
+
+                try
+                {
+
+                    using var udp4 = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback,     port));
+                    using var udp6 = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(System.Net.IPAddress.IPv6Loopback, port));
+
+                    var tcp4 = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                    tcp4.Start();
+                    tcp4.Stop();
+
+                    return (UInt16) port;
+
+                }
+                catch (System.Net.Sockets.SocketException)
+                { }
+
+            }
+
+            throw new InvalidOperationException("No port free for TCP and UDP was found.");
+
+        }
+
+        #endregion
+
         #region (helper) Door(Gateway, Name) / Until(Condition)
 
         private static String Door(Gateway  Gateway,
@@ -263,6 +347,109 @@ namespace cloud.charging.open.Gateway.Tests
                           );
 
             Assert.That(refused!.Message, Does.Contain("ocppServer.securityProfiles"));
+
+        }
+
+        #endregion
+
+        #region APortOfItsOwnForOCPP16StopsTheGateway()
+
+        /// <summary>
+        /// A gateway has one station server for every version of OCPP, as a
+        /// local controller has: a port of its own for OCPP 1.6 is a charging
+        /// station's, and stops the gateway where its file names one.
+        /// </summary>
+        [Test]
+        public void APortOfItsOwnForOCPP16StopsTheGateway()
+        {
+
+            var refused = Assert.Throws<InvalidOperationException>(
+                              () => AGateway(new JProperty("ocppServer", new JObject(new JProperty("port16", 9444))))
+                          );
+
+            Assert.That(refused!.Message, Does.Contain("'ocppServer.port16' is a charging station's").And.Contain("subprotocols"));
+
+        }
+
+        #endregion
+
+        #region HTTP3IsTakenWhereTheFileSaysSo_AndSwitchedWhileTheServerRuns()
+
+        /// <summary>
+        /// "http3": true, and the station port takes WebSockets over HTTP/3 on
+        /// the UDP port of its number; switched off and on again while it
+        /// runs, written to the file each time - and a port for OCPP 1.6 is
+        /// refused there as in the file, with nothing changed.
+        /// </summary>
+        [Test]
+        public async Task HTTP3IsTakenWhereTheFileSaysSo_AndSwitchedWhileTheServerRuns()
+        {
+
+            var port    = APortFreeForBoth();
+            var gateway = await AGatewayTakingHTTP3(port, WithAServerKey: true);
+            var server  = gateway.StationServer!;
+
+            Assert.That(gateway.OCPPServerTLS, Is.True, "the station port is not encrypted");
+
+            await Until(() => server.HTTP3Port is not null || server.WhyNoHTTP3 is not null);
+
+            Assert.That(server.HTTP3Port?.ToUInt16(), Is.EqualTo(port), "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
+
+            var state = gateway.OCPPServerConfigurationJSON();
+
+            Assert.Multiple(() => {
+                Assert.That(state.Value<Boolean>("http3"),                      Is.True);
+                Assert.That(state["state"]!.Value<Int32?>("http3Port"),         Is.EqualTo(port));
+                Assert.That(state["state"]!.Value<String?>("http3Problem"),     Is.Null);
+            });
+
+            // Off while it runs: the UDP port is closed, and the file says so.
+            Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("http3", false)), out var error), Is.True, error);
+
+            Assert.Multiple(() => {
+                Assert.That(server.HTTP3Port,                                                                       Is.Null);
+                Assert.That(gateway.OCPPServerConfigurationJSON().Value<Boolean>("http3"),                         Is.False);
+                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"]!.Value<Boolean?>("http3"), Is.False);
+            });
+
+            // And on again.
+            Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("http3", true)), out error), Is.True, error);
+
+            Assert.That(await Until(() => server.HTTP3Port?.ToUInt16() == port), Is.True, "HTTP/3 was not taken again: " + server.WhyNoHTTP3);
+
+            // A port for OCPP 1.6 is a charging station's.
+            Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("port16", 9444)), out error), Is.False);
+
+            Assert.Multiple(() => {
+                Assert.That(error,                                                                                 Does.Contain("'ocppServer.port16' is a charging station's"));
+                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"]!["port16"],     Is.Null);
+            });
+
+        }
+
+        #endregion
+
+        #region HTTP3WithoutTLS_IsSaidToBeNotTaken()
+
+        /// <summary>
+        /// Asked for on a station port without a server certificate - which is
+        /// unencrypted - HTTP/3 is not taken, and the Configuration page is
+        /// told why.
+        /// </summary>
+        [Test]
+        public async Task HTTP3WithoutTLS_IsSaidToBeNotTaken()
+        {
+
+            var gateway = await AGatewayTakingHTTP3(APortFreeForBoth(), WithAServerKey: false);
+            var state   = gateway.OCPPServerConfigurationJSON();
+
+            Assert.Multiple(() => {
+                Assert.That(gateway.OCPPServerTLS,                                Is.False);
+                Assert.That(gateway.StationServer!.AcceptHTTP3,                    Is.False);
+                Assert.That(state.Value<Boolean>("http3"),                         Is.True);
+                Assert.That(state["state"]!.Value<Int32?>("http3Port"),            Is.Null);
+                Assert.That(state["state"]!.Value<String?>("http3Problem"),        Is.EqualTo(Gateway.NoHTTP3WithoutTLS));
+            });
 
         }
 

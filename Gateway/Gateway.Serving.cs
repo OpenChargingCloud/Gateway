@@ -86,7 +86,7 @@ namespace cloud.charging.open.Gateway
                     break;
 
                 case JObject json:
-                    if (!OCPPServerConfiguration.TryParse(json, out section, out var problem))
+                    if (!OCPPServerConfiguration.TryParseForOneServer(json, out section, out var problem))
                         throw new InvalidOperationException($"'{ConfigFile.Path}': {problem} Repair or remove '{ConfigFile.Path}' and start again.");
                     break;
 
