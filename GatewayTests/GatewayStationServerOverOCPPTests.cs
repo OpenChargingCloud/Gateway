@@ -528,13 +528,16 @@ namespace cloud.charging.open.Gateway.Tests
         }
 
         /// <summary>
-        /// What the station got within the given time.
+        /// The text messages the station got within the given time - each whole,
+        /// however many frames it came in. A close is no message: it ends what
+        /// the station can get, and is not counted as an empty one.
         /// </summary>
         private static async Task<String[]> Received(ClientWebSocket Client, TimeSpan Within)
         {
 
-            var got     = new List<String>();
-            var buffer  = new Byte[64 * 1024];
+            var got      = new List<String>();
+            var buffer   = new Byte[64 * 1024];
+            var message  = new MemoryStream();
 
             using var timeout = new CancellationTokenSource(Within);
 
@@ -542,8 +545,22 @@ namespace cloud.charging.open.Gateway.Tests
             {
                 while (true)
                 {
+
                     var result = await Client.ReceiveAsync(buffer, timeout.Token);
-                    got.Add(Encoding.UTF8.GetString(buffer, 0, result.Count));
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                        break;
+
+                    message.Write(buffer, 0, result.Count);
+
+                    if (!result.EndOfMessage)
+                        continue;
+
+                    if (result.MessageType == WebSocketMessageType.Text)
+                        got.Add(Encoding.UTF8.GetString(message.GetBuffer(), 0, (Int32) message.Length));
+
+                    message.SetLength(0);
+
                 }
             }
             catch (OperationCanceledException)
