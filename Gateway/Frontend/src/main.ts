@@ -14,7 +14,6 @@ import { sshKeysSection }         from '@ocpp/sshKeys';
 import { connectionsPage }        from '@ocpp/pages/connections';
 import { ocppServerPage }         from '@ocpp/pages/ocppServer';
 import { stationLoginsPage }      from '@ocpp/pages/stationLogins';
-import { serverCertificatesPage } from '@ocpp/pages/serverCertificates';
 import { clientTrustPage }        from '@ocpp/pages/clientTrust';
 import { setNodeNoun, setNodeTraits } from '@ocpp/settings';
 
@@ -32,8 +31,10 @@ setNodeTraits({ oneNodePerOCPPVersion: false, isDialled: true });
 
 // What a gateway has pages for beside what every node has: its connections,
 // and the server the stations below it connect to - with the stations that
-// may sign in and their groups, what the server presents and the chains it
-// accepts - drawn by the pages a local controller draws its own with.
+// may sign in and their groups, and the chains it accepts - drawn by the
+// pages a local controller draws its own with. What the server presents is
+// the certificate store's: TLS server identities for the listener "ocpp", and
+// its server keys, on the Server identities page every node has.
 // The sign-in, the log, the name servers, the time servers, the SSH server,
 // the certificate store, the client and server identities, the frame and
 // following the log while somebody is signed in are every node's - see
@@ -55,13 +56,13 @@ startNode({
             nodeMenu.certificates,
             nodeMenu.identities,
             // What the web interface shows over HTTPS, where the "web"
-            // section says "tls": { "certificate": "store" } or --https.
+            // section says "tls": { "certificate": "store" } or --https -
+            // and what the station server shows, with its server keys.
             nodeMenu.serverIdentities,
             // The station server, as a local controller has it: the same
             // pages, paths, labels and rights.
             { path: '/configuration/ocpp-server',              label: 'Charging stations',   icon: 'fa-charging-station',  permission: [ 'stations:read' ]     },
             { path: '/configuration/ocpp-server/logins',        label: 'Logins and groups',   icon: 'fa-users-gear',        permission: [ 'stations:read' ]     },
-            { path: '/configuration/ocpp-server/certificates',  label: 'Server certificates', icon: 'fa-certificate',       permission: [ 'certificates:read' ] },
             { path: '/configuration/ocpp-server/trust',         label: 'Accepted chains',     icon: 'fa-user-shield',       permission: [ 'certificates:read' ] }
         ]),
         nodeMenu.logs
@@ -71,9 +72,9 @@ startNode({
     // servers, the name servers and the servers of its connections, a TLS
     // identity for a CSMS its connections show it to. A client root is kept,
     // and the station server judges a station's certificate by its own
-    // Accepted chains instead. What its web interface shows over HTTPS is on
-    // the Server identities page, what its station server shows on the Server
-    // certificates page.
+    // Accepted chains instead. What its web interface shows over HTTPS, and
+    // what its station server shows - with the server keys the stations pin -
+    // are on the Server identities page.
     certificates: {
         hints: {
             believes:  html`
@@ -93,9 +94,15 @@ startNode({
             serves:    html`
                 What the web interface, the JSON API and the sign-in show over HTTPS, with its private key -
                 where the "web" section of the configuration file says "tls": { "certificate": "store" },
-                or the gateway is started with --https.
+                or the gateway is started with --https - shown on the listener "web"; and what the
+                <a href="${toURL('/configuration/ocpp-server')}">station server</a> shows the charging stations
+                and local controllers below this gateway, on the listener "ocpp": a certificate an authority
+                issued, or a server key of its own that the stations pin. An identity told no listener is
+                shown on both.
             `
         },
+        // The station server's server keys: offered here before it has one.
+        serverKeyListeners: [ 'ocpp' ],
         // And who it is where it dials over ssh://: the keys it signs in
         // with, which are no certificates and stand among what it presents
         // all the same.
@@ -110,7 +117,6 @@ startNode({
         '/configuration/connections':               connectionsPage,
         '/configuration/ocpp-server':               ocppServerPage,
         '/configuration/ocpp-server/logins':        stationLoginsPage,
-        '/configuration/ocpp-server/certificates':  serverCertificatesPage,
         '/configuration/ocpp-server/trust':         clientTrustPage
     }
 });

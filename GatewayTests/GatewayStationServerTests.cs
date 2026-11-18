@@ -17,13 +17,20 @@
 
 #region Usings
 
+using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
+
 using Newtonsoft.Json.Linq;
 
 using NUnit.Framework;
 
 using org.GraphDefined.Vanaheimr.Hermod;
 
+using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
+using cloud.charging.open.protocols.WWCP.Node.Logging;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 using cloud.charging.open.protocols.WWCP.Node.Connections;
@@ -221,12 +228,8 @@ namespace cloud.charging.open.Gateway.Tests
             await TestPorts.StartedOnFreshPorts(() => gateway = AGatewayIn(
                                                           directory => {
 
-                                                              if (!WithAServerKey)
-                                                                  return;
-
-                                                              using var store = new ServerCertificateStore(Path.Combine(directory, ServerCertificateStore.DefaultDirectoryName));
-
-                                                              Assert.That(store.TryCreateServerKey(null, false, out _, out _, out var error), Is.True, error);
+                                                              if (WithAServerKey)
+                                                                  AServerKeyIn(directory);
 
                                                           },
                                                           new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-http3"))),
@@ -238,6 +241,66 @@ namespace cloud.charging.open.Gateway.Tests
                                                       ));
 
             return gateway!;
+
+        }
+
+        /// <summary>
+        /// A server key of the station port, "ocpp", made in the certificate
+        /// store of a gateway that is not built yet - so that its station
+        /// server, which decides whether it encrypts when it starts, starts
+        /// with something to present - and its key pin.
+        /// </summary>
+        private static KeyPin AServerKeyIn(String Directory)
+        {
+
+            var store = new CertificateStore(Path.Combine(Directory, CertificatesConfiguration.DefaultDirectory),
+                                             new EventLog(),
+                                             [ CertificateKind.TLSServerIdentity ],
+                                             "gateway");
+
+            store.Reload();
+
+            Assert.That(store.TryCreateServerKey(Gateway.StationListener, null, AsNext: false, out var key, out var error), Is.True, error);
+
+            return key!.KeyPin;
+
+        }
+
+        /// <summary>
+        /// What the station port on the given port shows a charging station
+        /// that connects over TLS - asked afresh, on a connection of its own.
+        /// </summary>
+        /// <remarks>
+        /// The certificate is taken in the handshake whether or not it ends
+        /// well: a station that sends no certificate of its own may be turned
+        /// away after it has been shown the server's.
+        /// </remarks>
+        private static async Task<X509Certificate2> ShownOn(UInt16 Port)
+        {
+
+            using var tcp = new TcpClient();
+
+            await tcp.ConnectAsync(System.Net.IPAddress.Loopback, Port);
+
+            X509Certificate2? shown = null;
+
+            using var tls = new SslStream(tcp.GetStream(), false);
+
+            try
+            {
+                await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions {
+                                                        TargetHost                           = "localhost",
+                                                        RemoteCertificateValidationCallback  = (_, certificate, _, _) => {
+                                                                                                   if (certificate is not null)
+                                                                                                       shown = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+                                                                                                   return true;
+                                                                                               }
+                                                    });
+            }
+            catch (Exception) when (shown is not null)
+            { }
+
+            return shown ?? throw new InvalidOperationException($"The station port on {Port} showed no certificate.");
 
         }
 
@@ -424,6 +487,104 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(error,                                                                                 Does.Contain("'ocppServer.port16' is a charging station's"));
                 Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"]!["port16"],     Is.Null);
             });
+
+        }
+
+        #endregion
+
+        #region TheStationPort_ShowsItsServerKey_AndTheNextOnceSwitchedTo()
+
+        /// <summary>
+        /// A server key of "ocpp", made in the gateway's certificate store: a
+        /// station that connects over TLS is shown its carrier, with the key pin
+        /// it pins. A next key announced is not shown before the switch; after
+        /// it, a fresh connection is shown the new key pin - and the key before
+        /// is current no more.
+        /// </summary>
+        [Test]
+        public async Task TheStationPort_ShowsItsServerKey_AndTheNextOnceSwitchedTo()
+        {
+
+            var     port      = APortFreeForBoth();
+            KeyPin? first     = null;
+            Gateway? gateway  = null;
+
+            await TestPorts.StartedOnFreshPorts(() => gateway = AGatewayIn(
+                                                          directory => first = AServerKeyIn(directory),
+                                                          new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-keys"))),
+                                                          new JProperty("ocppServer", new JObject(new JProperty("enabled",           true),
+                                                                                                  new JProperty("address",           "127.0.0.1"),
+                                                                                                  new JProperty("port",              port),
+                                                                                                  new JProperty("securityProfiles",  new JArray(1, 2))))
+                                                      ));
+
+            Assert.That(gateway!.OCPPServerTLS, Is.True, "the station port is not encrypted");
+
+            using (var carrier = await ShownOn(port))
+            {
+                Assert.Multiple(() => {
+                    Assert.That(KeyPin.FromCertificate(carrier),  Is.EqualTo(first));
+                    Assert.That(carrier.Subject,                   Does.Contain(CertificateStore.CarrierMark));
+                    Assert.That(gateway.OCPPServerKeyPin,          Is.EqualTo(first));
+                });
+            }
+
+            Assert.That(gateway.Certificates.TryCreateServerKey(Gateway.StationListener, null, AsNext: true, out var next, out var error), Is.True, error);
+
+            using (var stillTheFirst = await ShownOn(port))
+            {
+                Assert.Multiple(() => {
+                    Assert.That(KeyPin.FromCertificate(stillTheFirst),  Is.EqualTo(first), "the next key was shown before anybody switched to it");
+                    Assert.That(gateway.OCPPServerNextKeyPin,            Is.EqualTo(next!.KeyPin));
+                });
+            }
+
+            Assert.That(gateway.Certificates.TrySwitchToNextKey(Gateway.StationListener, next!.KeyPin, out _, out error), Is.True, error);
+
+            using (var theNext = await ShownOn(port))
+            {
+                Assert.Multiple(() => {
+                    Assert.That(KeyPin.FromCertificate(theNext),  Is.EqualTo(next.KeyPin), "a fresh connection is not shown the key switched to");
+                    Assert.That(gateway.OCPPServerKeyPin,          Is.EqualTo(next.KeyPin));
+                    Assert.That(gateway.OCPPServerNextKeyPin,      Is.Null);
+                });
+            }
+
+        }
+
+        #endregion
+
+        #region ASwitch_StartsHTTP3AgainWithTheNewKey()
+
+        /// <summary>
+        /// HTTP/3 is handed its certificate once, when it starts: a switch to
+        /// the next server key starts it again, on the same UDP port, and says
+        /// so - while TCP goes on taking connections throughout.
+        /// </summary>
+        [Test]
+        public async Task ASwitch_StartsHTTP3AgainWithTheNewKey()
+        {
+
+            var port    = APortFreeForBoth();
+            var gateway = await AGatewayTakingHTTP3(port, WithAServerKey: true);
+            var server  = gateway.StationServer!;
+
+            Assert.That(await Until(() => server.HTTP3Port?.ToUInt16() == port), Is.True, "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
+
+            Assert.That(gateway.Certificates.TryCreateServerKey(Gateway.StationListener, null, AsNext: true, out var next, out var error), Is.True, error);
+            Assert.That(gateway.Certificates.TrySwitchToNextKey(Gateway.StationListener, next!.KeyPin, out _, out error), Is.True, error);
+
+            Assert.That(await Until(() => gateway.Log.Recent(500).Any(entry => entry.Message.Contains("HTTP/3 of the charging station port was started again"))),
+                        Is.True, "HTTP/3 was not started again after the switch: " + server.WhyNoHTTP3);
+
+            Assert.Multiple(() => {
+                Assert.That(server.HTTP3Port?.ToUInt16(), Is.EqualTo(port), "HTTP/3 is not taken on its port after the switch: " + server.WhyNoHTTP3);
+                Assert.That(gateway.OCPPServerKeyPin,     Is.EqualTo(next.KeyPin));
+            });
+
+            using var overTCP = await ShownOn(port);
+
+            Assert.That(KeyPin.FromCertificate(overTCP), Is.EqualTo(next.KeyPin));
 
         }
 
