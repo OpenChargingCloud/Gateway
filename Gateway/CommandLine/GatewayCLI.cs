@@ -22,6 +22,7 @@ using System.Reflection;
 using org.GraphDefined.Vanaheimr.CLI;
 
 using cloud.charging.open.protocols.WWCP.Node.CommandLine;
+using cloud.charging.open.protocols.OCPP.Node.Serving.CommandLine;
 
 #endregion
 
@@ -47,6 +48,13 @@ namespace cloud.charging.open.Gateway.CommandLine
     /// ICLICommand and can be built from a GatewayCLI: a command of the
     /// gateway's own is a new file in this directory and nothing else. There
     /// is none yet.
+    /// </para>
+    /// <para>
+    /// The commands of every node that serves charging stations -
+    /// stationKeys and stationPins - are WWCP_OCPP_Node's, and registered by
+    /// hand: they are told which resource to ask for, and a gateway's
+    /// charging stations are its "stations", as on the pages of its station
+    /// server.
     /// </para>
     /// <para>
     /// Here, beside the gateway, and not in the program that runs it: what a
@@ -87,6 +95,7 @@ namespace cloud.charging.open.Gateway.CommandLine
             this.Gateway = Gateway;
 
             RegisterCLIType(typeof(GatewayCLI));
+            RegisterStationCommands();
 
         }
 
@@ -110,8 +119,23 @@ namespace cloud.charging.open.Gateway.CommandLine
             this.Gateway = Gateway;
 
             RegisterCLIType(typeof(GatewayCLI));
+            RegisterStationCommands();
 
         }
+
+        #endregion
+
+        #region (private) RegisterStationCommands()
+
+        /// <summary>
+        /// The commands of every node that serves charging stations, asking
+        /// for the gateway's "stations" - once, in this class alone, so that a
+        /// command line derived from it has them once as well.
+        /// </summary>
+        private void RegisterStationCommands()
+
+            => RegisterCommands(new StationKeysCommand(this, GatewayAccess.Stations),
+                                new StationPinsCommand(this, GatewayAccess.Stations));
 
         #endregion
 
