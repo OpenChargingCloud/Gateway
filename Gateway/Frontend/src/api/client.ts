@@ -50,14 +50,16 @@ export interface Configuration extends NodeConfiguration {
 
 /**
  * What a certificate in this gateway's store is for. Roots are believed and
- * the gateway's own certificate is presented; a server certificate is
- * neither, but kept to recognise a server by its fingerprint.
+ * the gateway's own certificates are presented - as a client, and as its web
+ * interface (tlsServerIdentity); a server certificate is neither, but kept to
+ * recognise a server by its fingerprint; an issuing CA is neither either, but
+ * kept to build the chain of a certificate shown without it.
  *
- * The four kinds of TLS, which are all a gateway keeps - none of the seven of
- * ISO 15118, which are a vehicle's. The store says the same, and a page shows
- * what the store says.
+ * The four kinds of TLS, the server identity and the issuing CAs - none of the
+ * seven of ISO 15118, which are a vehicle's. The store says the same, and a
+ * page shows what the store says.
  */
-export type CertificateKind = 'tlsRoot' | 'clientRoot' | 'tlsServer' | 'tlsIdentity';
+export type CertificateKind = 'tlsRoot' | 'clientRoot' | 'tlsServer' | 'tlsIdentity' | 'tlsServerIdentity' | 'tlsIntermediate';
 
 /** One certificate in the store. */
 export type Certificate = NodeCertificate<CertificateKind>;

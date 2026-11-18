@@ -237,7 +237,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
 
-                Assert.That(gateway!.Certificates.Kinds,      Is.EqualTo(CertificateKindExtensions.TLS.Append(CertificateKind.TLSServerIdentity)));
+                Assert.That(gateway!.Certificates.Kinds,      Is.EqualTo(CertificateKindExtensions.TLS.Append(CertificateKind.TLSServerIdentity).Append(CertificateKind.TLSIntermediate)));
                 Assert.That(gateway!.Certificates.Directory,  Is.EqualTo(Path.GetFullPath(store)), "beside the configuration file");
 
                 foreach (var kind in Gateway.CertificateKinds)

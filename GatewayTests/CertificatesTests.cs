@@ -165,7 +165,7 @@ namespace cloud.charging.open.Gateway.Tests
             Assert.Multiple(() => {
 
                 Assert.That(((JObject) store["kinds"]!).Properties().Select(kind => kind.Name),
-                            Is.EqualTo(new[] { "tlsRoot", "clientRoot", "tlsServer", "tlsIdentity", "tlsServerIdentity" }),
+                            Is.EqualTo(new[] { "tlsRoot", "clientRoot", "tlsServer", "tlsIdentity", "tlsServerIdentity", "tlsIntermediate" }),
                             "the kinds this store keeps, and none of a vehicle's");
 
                 Assert.That(store["usages"]!.Values<String>(),                               Is.EqualTo(new[] { "dns", "nts", "ocpp" }), "what a page may offer");
@@ -187,8 +187,10 @@ namespace cloud.charging.open.Gateway.Tests
 
                 Assert.That(store["trustAnchors"]!.Values<String>(),                         Is.EqualTo(new[] { "tlsRoot", "clientRoot" }));
                 Assert.That(store["credentials"]!.Values<String>(),                          Is.EqualTo(new[] { "tlsIdentity", "tlsServerIdentity" }));
-                Assert.That(store["recognised"]!.Values<String>(),                           Is.EqualTo(new[] { "tlsServer" }),
-                            "a server certificate is recognised, neither believed nor presented");
+                Assert.That(store["recognised"]!.Values<String>(),                           Is.EqualTo(new[] { "tlsServer", "tlsIntermediate" }),
+                            "a server certificate and an issuing CA are recognised, neither believed nor presented");
+                Assert.That(store["kinds"]!["tlsIntermediate"]!["page"]!.Value<String>(),    Is.EqualTo("certificates"),
+                            "an issuing CA is kept with the certificates alone, as the roots it leads to");
 
             });
 

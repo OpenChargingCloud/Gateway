@@ -118,8 +118,8 @@ namespace cloud.charging.open.Gateway
 
         /// <summary>
         /// The kinds of certificate a gateway keeps: the four of TLS, the
-        /// identity its web interface shows over HTTPS, and none of the seven
-        /// of ISO 15118, which are a vehicle's.
+        /// identity its web interface shows over HTTPS, the issuing CAs, and
+        /// none of the seven of ISO 15118, which are a vehicle's.
         /// </summary>
         /// <remarks>
         /// The roots a time server or a name server of this gateway may chain
@@ -134,8 +134,13 @@ namespace cloud.charging.open.Gateway
         /// "store" }, or --https - kept from the start, so that
         /// --import-certificate tlsServerIdentity=&lt;file&gt; puts it in at the
         /// same start that asks for it.
+        ///
+        /// The issuing CAs because a CSMS that dials this gateway may sign in
+        /// with a certificate of a CA below a root and show it alone: the CAs
+        /// between are kept here to build its chain with, and are believed
+        /// nothing by themselves - see WWCPNode.Accepting.
         /// </remarks>
-        public static readonly      IReadOnlyList<CertificateKind>  CertificateKinds  = [ .. CertificateKindExtensions.TLS, CertificateKind.TLSServerIdentity ];
+        public static readonly      IReadOnlyList<CertificateKind>  CertificateKinds  = [ .. CertificateKindExtensions.TLS, CertificateKind.TLSServerIdentity, CertificateKind.TLSIntermediate ];
 
         #endregion
 
