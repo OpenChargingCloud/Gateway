@@ -43,16 +43,17 @@ namespace cloud.charging.open.Gateway.Tests
     /// <summary>
     /// The port the charging stations below a gateway connect to, as the CSMS sees it:
     /// OCPPServerController of the gateway's own Device Model, read and written over the line the
-    /// gateway dials up to its CSMS, as the page "Charging stations" reads and writes it - and what a
-    /// station on that port cannot do: ask the gateway what only the CSMS asks, or send another
-    /// station a request.
+    /// gateway dials up to its CSMS, as the page "Charging stations" reads and writes it; the
+    /// stations that may sign in there and their login groups, StationLoginController and
+    /// StationLoginGroupController - and what a station on that port cannot do: ask the gateway
+    /// what only the CSMS asks, or send another station a request.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// OCPPServerController, the Device Model it lives in and the gates are WWCP_OCPP's and
+    /// The controllers, the Device Model they live in and the gates are WWCP_OCPP's and
     /// WWCP_OCPP_Node's, and tested there and by the local controller. What is tested here is that a
     /// gateway is wired to them: that its OCPP node answers from its own Device Model, that the
-    /// component is attached to it, that the gates are at its door and that the component is the
+    /// components are attached to it, that the gates are at its door and that the components are the
     /// resource "stations".
     /// </para>
     /// <para>
@@ -314,6 +315,65 @@ namespace cloud.charging.open.Gateway.Tests
                         ))
                     )));
 
+        /// <summary>
+        /// GetVariables of the given variables of the given components and instances:
+        /// "Component[Instance].Variable" to (status, value).
+        /// </summary>
+        private async Task<Dictionary<String, (String? Status, String? Value)>> GetOf(params (String Component, String Instance, String Variable)[] Entries)
+        {
+
+            var answer = await csms.Ask(
+                                   "GetVariables",
+                                   new JObject(
+                                       new JProperty("getVariableData", new JArray(
+                                           Entries.Select(entry => new JObject(
+                                               new JProperty("component", new JObject(new JProperty("name", entry.Component), new JProperty("instance", entry.Instance))),
+                                               new JProperty("variable",  new JObject(new JProperty("name", entry.Variable)))
+                                           ))
+                                       ))
+                                   )
+                               );
+
+            Assert.That(answer[0].Value<Int32>(), Is.EqualTo(3), answer.ToString(Formatting.None));
+
+            return (answer[2]?["getVariableResult"] as JArray ?? []).
+                       OfType<JObject>().
+                       ToDictionary(result => $"{result["component"]?["name"]}[{result["component"]?["instance"]}].{result["variable"]?["name"]}",
+                                    result => (result["attributeStatus"]?.Value<String>(),
+                                               result["attributeValue"]?. Value<String>()));
+
+        }
+
+        /// <summary>
+        /// SetVariables of the given variables of the given components and instances, in one
+        /// request: "Component[Instance].Variable" to (status, additional info).
+        /// </summary>
+        private async Task<Dictionary<String, (String? Status, String? Info)>> SetOf(params (String Component, String Instance, String Variable, String Value)[] Entries)
+        {
+
+            var answer = await csms.Ask(
+                                   "SetVariables",
+                                   new JObject(
+                                       new JProperty("setVariableData", new JArray(
+                                           Entries.Select(entry => new JObject(
+                                               new JProperty("attributeValue",  entry.Value),
+                                               new JProperty("component",       new JObject(new JProperty("name", entry.Component), new JProperty("instance", entry.Instance))),
+                                               new JProperty("variable",        new JObject(new JProperty("name", entry.Variable)))
+                                           ))
+                                       ))
+                                   )
+                               );
+
+            Assert.That(answer[0].Value<Int32>(), Is.EqualTo(3), answer.ToString(Formatting.None));
+
+            return (answer[2]?["setVariableResult"] as JArray ?? []).
+                       OfType<JObject>().
+                       ToDictionary(result => $"{result["component"]?["name"]}[{result["component"]?["instance"]}].{result["variable"]?["name"]}",
+                                    result => (result["attributeStatus"]?.Value<String>(),
+                                               result["attributeStatusInfo"]?["additionalInfo"]?.Value<String>()));
+
+        }
+
         #endregion
 
         #region (private) InTheFile / Listens(Port) / Until(Condition)
@@ -359,6 +419,31 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
         #region (private) A station on the station port
+
+        /// <summary>
+        /// Whether a station of the given id gets in on the station port with the given password.
+        /// </summary>
+        private async Task<Boolean> SignsIn(String Id, String Password)
+        {
+
+            using var client = new ClientWebSocket();
+
+            client.Options.AddSubProtocol("ocpp2.1");
+            client.Options.SetRequestHeader("Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Id}:{Password}")));
+
+            using var timeout = new CancellationTokenSource(Guard);
+
+            try
+            {
+                await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/{Id}"), timeout.Token);
+                return client.State == WebSocketState.Open;
+            }
+            catch (WebSocketException)
+            {
+                return false;
+            }
+
+        }
 
         /// <summary>
         /// A station on the station port over ws://, signed in with its password.
@@ -694,11 +779,107 @@ namespace cloud.charging.open.Gateway.Tests
         #endregion
 
 
+        #region TheCSMSListsAStation_ThatSignsInThen()
+
+        /// <summary>
+        /// A station not listed yet is listed by the CSMS with its password: accepted, read back in the
+        /// group "default", and it signs in - where it did not before.
+        /// </summary>
+        [Test]
+        public async Task TheCSMSListsAStation_ThatSignsInThen()
+        {
+
+            const String password = "cs002-password-long-enough";
+
+            var before  = await SignsIn("cs002", password);
+            var set     = await SetOf(("StationLoginController", "cs002", "Password", password),
+                                      ("StationLoginController", "cs002", "Enabled",  "true"));
+            var read    = await GetOf(("StationLoginController", "cs002", "HasPassword"),
+                                      ("StationLoginController", "cs002", "Group"));
+            var after   = await SignsIn("cs002", password);
+
+            Assert.Multiple(() => {
+                Assert.That(before,                                                 Is.False, "a station that is not listed got in");
+                Assert.That(set["StationLoginController[cs002].Password"].Status,  Is.EqualTo("Accepted"), set["StationLoginController[cs002].Password"].Info);
+                Assert.That(set["StationLoginController[cs002].Enabled"].Status,   Is.EqualTo("Accepted"), set["StationLoginController[cs002].Enabled"].Info);
+                Assert.That(read["StationLoginController[cs002].HasPassword"],     Is.EqualTo(("Accepted", "true")));
+                Assert.That(read["StationLoginController[cs002].Group"],           Is.EqualTo(("Accepted", "default")));
+                Assert.That(after,                                                  Is.True,  "the station listed over OCPP does not get in");
+            });
+
+        }
+
+        #endregion
+
+        #region TheCSMSReadsAStationAndItsGroup_ButNoSecret()
+
+        /// <summary>
+        /// A station listed on the page is in the gateway's Device Model at once: the CSMS reads it and
+        /// its group - that it has a password, never the password.
+        /// </summary>
+        [Test]
+        public async Task TheCSMSReadsAStationAndItsGroup_ButNoSecret()
+        {
+
+            Assert.That(gateway.StationLogins.TrySetPassword("cs001", ThePassword, null, null, out _, out var error), Is.True, error);
+
+            var read = await GetOf(("StationLoginController",      "cs001",   "Group"),
+                                   ("StationLoginController",      "cs001",   "HasPassword"),
+                                   ("StationLoginController",      "cs001",   "Password"),
+                                   ("StationLoginGroupController", "default", "Members"));
+
+            Assert.Multiple(() => {
+                Assert.That(read["StationLoginController[cs001].Group"],          Is.EqualTo(("Accepted", "default")));
+                Assert.That(read["StationLoginController[cs001].HasPassword"],    Is.EqualTo(("Accepted", "true")));
+                Assert.That(read["StationLoginController[cs001].Password"],       Is.EqualTo(("Rejected", (String?) null)), "a password was read out");
+                Assert.That(read["StationLoginGroupController[default].Members"], Is.EqualTo(("Accepted", "1")));
+            });
+
+        }
+
+        #endregion
+
+        #region AStation_CannotListAnother()
+
+        /// <summary>
+        /// A station on the station port cannot list another station: SetVariables for the gateway is
+        /// refused at its door, and nobody new gets in.
+        /// </summary>
+        [Test]
+        public async Task AStation_CannotListAnother()
+        {
+
+            using var cs001 = await AStation("cs001");
+
+            const String password = "cs009-password-long-enough";
+
+            var asItself  = Frame(gateway.Node.Id.ToString(), "cs001", "SetVariables",
+                                  new JObject(new JProperty("setVariableData", new JArray(
+                                      new JObject(new JProperty("attributeValue",  password),
+                                                  new JProperty("component",       new JObject(new JProperty("name", "StationLoginController"), new JProperty("instance", "cs009"))),
+                                                  new JProperty("variable",        new JObject(new JProperty("name", "Password"))))
+                                  ))));
+
+            var answer    = await Ask(cs001, asItself);
+            var signsIn   = await SignsIn("cs009", password);
+
+            Assert.Multiple(() => {
+                Assert.That(answer?[0].Value<Int32>(),   Is.EqualTo(4),  $"not refused: {answer?.ToString(Formatting.None)}");
+                Assert.That(answer?[2].Value<String>(),  Is.EqualTo("SecurityError"));
+                Assert.That(signsIn,                     Is.False,       "a station listed another one");
+            });
+
+        }
+
+        #endregion
+
+
         #region OCPPServerController_IsTheResourceStations()
 
         /// <summary>
-        /// Who may read and set the station port over OCPP is who may on its page: the resource
-        /// "stations" - decided entry by entry, as every component of the gateway's own Device Model.
+        /// Who may read and set the station port, and the stations that may sign in there and their
+        /// groups, over OCPP is who may on their page: the resource "stations" - decided entry by
+        /// entry, as every component of the gateway's own Device Model.
         /// </summary>
         [Test]
         public void OCPPServerController_IsTheResourceStations()
@@ -707,7 +888,9 @@ namespace cloud.charging.open.Gateway.Tests
             var policy = gateway.Node.OCPP.SignaturePolicy;
 
             Assert.Multiple(() => {
-                Assert.That(policy.ResourceOfComponent?.Invoke("OCPPServerController"),  Is.EqualTo(GatewayAccess.Stations));
+                Assert.That(policy.ResourceOfComponent?.Invoke("OCPPServerController"),         Is.EqualTo(GatewayAccess.Stations));
+                Assert.That(policy.ResourceOfComponent?.Invoke("StationLoginController"),       Is.EqualTo(GatewayAccess.Stations));
+                Assert.That(policy.ResourceOfComponent?.Invoke("StationLoginGroupController"),  Is.EqualTo(GatewayAccess.Stations));
                 Assert.That(policy.ActionsDecidedPerEntry,                               Is.SupersetOf(new[] { "SetVariables", "GetVariables", "GetBaseReport", "GetReport" }));
                 Assert.That(policy.IncomingDirection,                                    Is.EqualTo("CSMS->CS"));
                 Assert.That(gateway.Node.GetComponentConfigs("OCPPServerController"),    Is.Not.Empty, "the component is not in the gateway's Device Model");

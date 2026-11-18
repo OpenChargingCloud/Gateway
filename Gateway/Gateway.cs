@@ -302,6 +302,11 @@ namespace cloud.charging.open.Gateway
             // write as the page does - "stations", see ResourceOfComponent.
             AttachOCPPServerController(gw01);
 
+            // StationLoginController and StationLoginGroupController: the
+            // stations that may sign in to it and their login groups, for the
+            // CSMS to read and to write as the page lists them - "stations" too.
+            AttachStationLoginControllers(gw01);
+
             #endregion
 
             #region The JSON API

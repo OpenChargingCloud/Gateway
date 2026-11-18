@@ -85,15 +85,18 @@ namespace cloud.charging.open.Gateway
         /// device model belongs to.
         /// </summary>
         /// <remarks>
-        /// OCPPServerController is the port the charging stations connect to:
-        /// "stations", as its page. Every other component is what it is for
-        /// every node.
+        /// OCPPServerController is the port the charging stations connect to,
+        /// StationLoginController and StationLoginGroupController the stations
+        /// that may sign in to it and their login groups: "stations", as their
+        /// page. Every other component is what it is for every node.
         /// </remarks>
         private static String ResourceOfComponent(String Component)
 
             => Component switch {
-                   "OCPPServerController" => GatewayAccess.Stations,
-                   _                      => protocols.WWCP.SignaturePolicy.DefaultResourceOfComponent(Component)
+                   "OCPPServerController"         => GatewayAccess.Stations,
+                   "StationLoginController"       => GatewayAccess.Stations,
+                   "StationLoginGroupController"  => GatewayAccess.Stations,
+                   _                              => protocols.WWCP.SignaturePolicy.DefaultResourceOfComponent(Component)
                };
 
         #endregion
