@@ -251,6 +251,31 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region WhatTheSharedConnectionsSay_SpeaksOfAGateway()
+
+        /// <summary>
+        /// A text the gateway shares with every node that dials - a refusal of
+        /// what was typed for a connection, written where there is no node to
+        /// ask - says "this gateway", and not "this node".
+        /// </summary>
+        [Test]
+        public void WhatTheSharedConnectionsSay_SpeaksOfAGateway()
+        {
+
+            GatewayFrom();
+
+            Assert.That(ConnectionEntry.Validate("CSMS over FTP", "ftp://csms.example.org", null, null, out _, out _, out _, out var error),
+                        Is.False);
+
+            Assert.Multiple(() => {
+                Assert.That(error, Is.EqualTo("'ftp' is not something this gateway dials. OCPP goes over ws, wss or ssh."));
+                Assert.That(error, Does.Not.Contain("this node"));
+            });
+
+        }
+
+        #endregion
+
         #region AnOCPPSectionThatIsWrongStopsTheGateway()
 
         /// <summary>
