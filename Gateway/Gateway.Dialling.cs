@@ -23,6 +23,7 @@ using cloud.charging.open.protocols.WWCP.NetworkingNode;
 using cloud.charging.open.protocols.WWCP.Node.Certificates;
 
 using cloud.charging.open.protocols.WWCP.Node.Connections;
+using cloud.charging.open.protocols.WWCP.Node.Logins;
 
 using cloud.charging.open.Gateway.Configuration;
 
@@ -127,7 +128,8 @@ namespace cloud.charging.open.Gateway
 
             Connections = new ConnectionStore(
                               Path.Combine(directory, ConnectionStore.DefaultDirectoryName),
-                              TimeProvider
+                              TimeProvider,
+                              NodeNoun
                           );
 
             keyPinning       = NewKeyPinning();
@@ -139,22 +141,14 @@ namespace cloud.charging.open.Gateway
             Connections.KnownCertificateIds   = () => Certificates.ByKind(CertificateKind.TLSIdentity).Select(entry => entry.Id);
             Connections.OnNotice             += (level, message) => Log.Log(level, message, "ocpp", "connections");
 
-            // A CSMS that dials comes in over the port of the charging
-            // stations, under a name: one a charging station has is not free.
-            // Asked before the station server is built, as on a local
-            // controller, hence the "?".
-            Connections.WhyInboundNameIsTaken = name => StationLogins?.TryGet(name, out _) == true
-                                                            ? $"'{name}' is a charging station of this gateway, and a CSMS that dials comes in over the " +
-                                                              "same port: under that name the two could not be told apart at the door. Give it another name."
-                                                            : null;
-
             // What is written down is what is dialled, from the moment it is
             // written - once this gateway has started; see WWCPNode.Peers.cs.
             Connections.OnConnectionsChanged += () => _ = ApplyConnectionChanges();
 
             SshKey = new SshClientKey(
                          Path.Combine(Connections.Path, SshClientKey.DirectoryName),
-                         $"gateway@{Environment.MachineName}"
+                         $"gateway@{Environment.MachineName}",
+                         NodeNoun:  NodeNoun
                      );
 
             SshKey.OnNotice += (level, message) => Log.Log(level, message, "ocpp", "connections", "ssh", "security");

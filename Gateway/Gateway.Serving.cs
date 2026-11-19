@@ -34,7 +34,7 @@ namespace cloud.charging.open.Gateway
     /// which names a CSMS that dials it may not come under.
     /// </summary>
     /// <remarks>
-    /// Everything else is OCPPServingNode's: the section "ocppServer" and what
+    /// Everything else is OCPPServingNode's: the section "webSocketServer" and what
     /// it may say, the charging stations that may sign in and their login
     /// groups, the chains a station's certificate may lead to, the keys and
     /// certificates the port presents, OCPP over SSH, and a CSMS that dials the
@@ -49,7 +49,7 @@ namespace cloud.charging.open.Gateway
 
         /// <summary>
         /// The TCP port the charging stations and local controllers below a
-        /// gateway connect to, unless its section "ocppServer" says another.
+        /// gateway connect to, unless its section "webSocketServer" says another.
         /// </summary>
         /// <remarks>
         /// Beside the gateway's web interface (2353), as a local controller's
@@ -64,7 +64,7 @@ namespace cloud.charging.open.Gateway
         #region (private) BuildStationServer()
 
         /// <summary>
-        /// The section "ocppServer" of the document the node below has already
+        /// The section "webSocketServer" of the document the node below has already
         /// read, at the gateway's own port where it names none, and the server
         /// built with it. Nothing listens yet.
         /// </summary>
@@ -76,9 +76,9 @@ namespace cloud.charging.open.Gateway
         private void BuildStationServer()
         {
 
-            OCPPServerConfiguration? section = null;
+            WebSocketServerConfiguration? section = null;
 
-            switch (ConfigurationDocument[OCPPServerConfiguration.SectionName])
+            switch (ConfigurationDocument[WebSocketServerConfiguration.SectionName])
             {
 
                 case null:
@@ -86,17 +86,17 @@ namespace cloud.charging.open.Gateway
                     break;
 
                 case JObject json:
-                    if (!OCPPServerConfiguration.TryParseForOneServer(json, out section, out var problem))
+                    if (!WebSocketServerConfiguration.TryParse(json, out section, out var problem, GatewayKind.Noun))
                         throw new InvalidOperationException($"'{ConfigFile.Path}': {problem} Repair or remove '{ConfigFile.Path}' and start again.");
                     break;
 
                 default:
-                    throw new InvalidOperationException($"'{ConfigFile.Path}': '{OCPPServerConfiguration.SectionName}' must be a JSON object. " +
+                    throw new InvalidOperationException($"'{ConfigFile.Path}': '{WebSocketServerConfiguration.SectionName}' must be a JSON object. " +
                                                         $"Repair or remove '{ConfigFile.Path}' and start again.");
 
             }
 
-            section ??= new OCPPServerConfiguration();
+            section ??= new WebSocketServerConfiguration();
 
             // The gateway's port where the file names none - not written to the
             // file, which goes on saying "the default decides".

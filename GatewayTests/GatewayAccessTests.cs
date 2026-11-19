@@ -226,7 +226,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "support", "operator", WWCPNode.AdminRole }));
-                Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections).Append(GatewayAccess.Stations)));
+                Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections).Append(GatewayAccess.Stations).Append(GatewayAccess.Commissioning)));
                 Assert.That(GatewayAccess.Connections, Is.EqualTo("connections"),
                             "the pages of the connections ask for it under the name a charging station gives it");
                 Assert.That(GatewayAccess.Stations,    Is.EqualTo("stations"),

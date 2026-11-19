@@ -35,6 +35,7 @@ using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 using cloud.charging.open.protocols.WWCP.Node.Connections;
 using cloud.charging.open.protocols.OCPP.Node.Serving;
+using cloud.charging.open.protocols.WWCP.Node.Logins;
 
 #endregion
 
@@ -170,7 +171,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(() => above = AGateway(
                                                         new JProperty("ocpp",       new JObject(new JProperty("nodeId",  "gw-above"))),
-                                                        new JProperty("ocppServer", new JObject(new JProperty("enabled", true),
+                                                        new JProperty("webSocketServer", new JObject(new JProperty("enabled", true),
                                                                                                 new JProperty("port",    TestPorts.Free())))
                                                     ));
 
@@ -197,7 +198,7 @@ namespace cloud.charging.open.Gateway.Tests
                                                         new JProperty("ocpp", new JObject(new JProperty("nodeId", Name)))
                                                     ));
 
-            Assert.That(below!.Connections.TryAddAuthentication("What it signs in to the gateway above with", "basic", Name, Password,
+            Assert.That(below!.Connections.TryAddBasicAuthentication(Name, Password, "What it signs in to the gateway above with",
                                                                 out var login, out var error),
                         Is.True, error);
 
@@ -233,10 +234,10 @@ namespace cloud.charging.open.Gateway.Tests
 
                                                           },
                                                           new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-http3"))),
-                                                          new JProperty("ocppServer", new JObject(new JProperty("enabled",           true),
+                                                          new JProperty("webSocketServer", new JObject(new JProperty("enabled",           true),
                                                                                                   new JProperty("address",           "127.0.0.1"),
                                                                                                   new JProperty("port",              Port),
-                                                                                                  new JProperty("securityProfiles",  new JArray(1, 2)),
+                                                                                                  new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS", "httpAuthOverTLS")),
                                                                                                   new JProperty("http3",             true)))
                                                       ));
 
@@ -387,7 +388,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(gateway.OCPPServerEnabled,             Is.False);
                 Assert.That(gateway.OCPPServerSettings.TCPPort,    Is.EqualTo(Gateway.DefaultStationServerPort));
                 Assert.That(Gateway.DefaultStationServerPort,      Is.EqualTo(IPPort.Parse(2354)));
-                Assert.That(gateway.StationLogins.Logins,          Is.Empty);
+                Assert.That(gateway.WebSocketLogins.Logins,          Is.Empty);
                 Assert.That(gateway.ConfigurationJSON()["stationServer"]?["enabled"]?.Value<Boolean>(), Is.False);
             });
 
@@ -406,10 +407,10 @@ namespace cloud.charging.open.Gateway.Tests
         {
 
             var refused = Assert.Throws<InvalidOperationException>(
-                              () => AGateway(new JProperty("ocppServer", new JObject(new JProperty("securityProfiles", new JArray(4)))))
+                              () => AGateway(new JProperty("webSocketServer", new JObject(new JProperty("clientAuthentication", new JArray("securityProfile4")))))
                           );
 
-            Assert.That(refused!.Message, Does.Contain("ocppServer.securityProfiles"));
+            Assert.That(refused!.Message, Does.Contain("webSocketServer.clientAuthentication"));
 
         }
 
@@ -418,19 +419,19 @@ namespace cloud.charging.open.Gateway.Tests
         #region APortOfItsOwnForOCPP16StopsTheGateway()
 
         /// <summary>
-        /// A gateway has one station server for every version of OCPP, as a
-        /// local controller has: a port of its own for OCPP 1.6 is a charging
-        /// station's, and stops the gateway where its file names one.
+        /// A gateway serves every version of OCPP on its one station port, as
+        /// every node does: a port of its own for OCPP 1.6 is no more, and
+        /// stops the gateway where its file names one.
         /// </summary>
         [Test]
         public void APortOfItsOwnForOCPP16StopsTheGateway()
         {
 
             var refused = Assert.Throws<InvalidOperationException>(
-                              () => AGateway(new JProperty("ocppServer", new JObject(new JProperty("port16", 9444))))
+                              () => AGateway(new JProperty("webSocketServer", new JObject(new JProperty("port16", 9444))))
                           );
 
-            Assert.That(refused!.Message, Does.Contain("'ocppServer.port16' is a charging station's").And.Contain("subprotocols"));
+            Assert.That(refused!.Message, Does.Contain("'webSocketServer.port16' is no more").And.Contain("subprotocols"));
 
         }
 
@@ -472,7 +473,7 @@ namespace cloud.charging.open.Gateway.Tests
             Assert.Multiple(() => {
                 Assert.That(server.HTTP3Port,                                                                       Is.Null);
                 Assert.That(gateway.OCPPServerConfigurationJSON().Value<Boolean>("http3"),                         Is.False);
-                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"]!.Value<Boolean?>("http3"), Is.False);
+                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["webSocketServer"]!.Value<Boolean?>("http3"), Is.False);
             });
 
             // And on again.
@@ -480,12 +481,12 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(await Until(() => server.HTTP3Port?.ToUInt16() == port), Is.True, "HTTP/3 was not taken again: " + server.WhyNoHTTP3);
 
-            // A port for OCPP 1.6 is a charging station's.
+            // A port of its own for OCPP 1.6 is no more.
             Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("port16", 9444)), out error), Is.False);
 
             Assert.Multiple(() => {
-                Assert.That(error,                                                                                 Does.Contain("'ocppServer.port16' is a charging station's"));
-                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"]!["port16"],     Is.Null);
+                Assert.That(error,                                                                                 Does.Contain("'webSocketServer.port16' is no more"));
+                Assert.That(JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["webSocketServer"]!["port16"],     Is.Null);
             });
 
         }
@@ -512,10 +513,10 @@ namespace cloud.charging.open.Gateway.Tests
             await TestPorts.StartedOnFreshPorts(() => gateway = AGatewayIn(
                                                           directory => first = AServerKeyIn(directory),
                                                           new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-keys"))),
-                                                          new JProperty("ocppServer", new JObject(new JProperty("enabled",           true),
+                                                          new JProperty("webSocketServer", new JObject(new JProperty("enabled",           true),
                                                                                                   new JProperty("address",           "127.0.0.1"),
                                                                                                   new JProperty("port",              port),
-                                                                                                  new JProperty("securityProfiles",  new JArray(1, 2))))
+                                                                                                  new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS", "httpAuthOverTLS"))))
                                                       ));
 
             Assert.That(gateway!.OCPPServerTLS, Is.True, "the station port is not encrypted");
@@ -632,7 +633,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(above.OCPPServerRunning, Is.True, "the station server of the gateway above does not listen");
 
-            Assert.That(above.StationLogins.TrySetPassword("gw-below", ThePassword, null, null, out _, out var error), Is.True, error);
+            Assert.That(above.WebSocketLogins.TrySetPassword("gw-below", ThePassword, null, null, out var error), Is.True, error);
 
             var (below, connection) = await AGatewayBelowDialling(above, "gw-below", ThePassword);
 
@@ -667,11 +668,10 @@ namespace cloud.charging.open.Gateway.Tests
 
             var above = await AGatewayAbove();
 
-            Assert.That(above.Connections.TryAddAuthentication("What the CSMS signs in with", "basic", "csms01", ThePassword,
-                                                               out var login, out var error),
+            Assert.That(above.WebSocketLogins.TrySetPassword("csms01", ThePassword, null, "What the CSMS signs in with", out var error),
                         Is.True, error);
 
-            Assert.That(above.Connections.TryAddConnection("The CSMS, dialling in", Door(above, "csms01"), "CSMS", true, login, null,
+            Assert.That(above.Connections.TryAddConnection("The CSMS, dialling in", Door(above, "csms01"), "CSMS", true, null, null,
                                                            out var inbound, out error,
                                                            Inbound: true),
                         Is.True, error);
@@ -688,36 +688,35 @@ namespace cloud.charging.open.Gateway.Tests
                         Is.True,
                         above.DialledConnections.GetValueOrDefault(inbound) ?? "never let in");
 
-            Assert.That(above.StationLogins.Logins, Is.Empty, "the CSMS became a station");
+            Assert.That(above.WebSocketLogins.Logins.Select(login => login.Id), Is.EqualTo(new[] { "csms01" }), "the CSMS signed in with another login than its own");
 
         }
 
         #endregion
 
-        #region AStationTakesNoNameOfACSMSThatDials()
+        #region ACSMSThatDials_SignsInWithItsWebSocketLogin()
 
         /// <summary>
-        /// A CSMS that dials and a station come in over the same port, under a
-        /// name each: one that is a station's is not free for a CSMS.
+        /// A CSMS that dials and a station come in over the same port, and sign
+        /// in alike, with a WebSocket login: credentials of the gateway, which
+        /// are what it proves itself with where it dials, are no way in.
         /// </summary>
         [Test]
-        public void AStationTakesNoNameOfACSMSThatDials()
+        public void ACSMSThatDials_SignsInWithItsWebSocketLogin()
         {
 
             var gateway = AGateway();
 
-            Assert.That(gateway.StationLogins.TrySetPassword("cs001", ThePassword, null, null, out _, out var error), Is.True, error);
-
-            Assert.That(gateway.Connections.TryAddAuthentication("What it signs in with", "basic", "cs001", ThePassword,
-                                                                 out var login, out error),
+            Assert.That(gateway.Connections.TryAddBasicAuthentication("csms01", ThePassword, "What the gateway signs in with",
+                                                                 out var login, out var error),
                         Is.True, error);
 
-            Assert.That(gateway.Connections.TryAddConnection("A CSMS under the name of a station", Door(gateway, "cs001"), "CSMS", true, login, null,
+            Assert.That(gateway.Connections.TryAddConnection("A CSMS with credentials of the gateway", Door(gateway, "csms01"), "CSMS", true, login, null,
                                                              out _, out var refused,
                                                              Inbound: true),
                         Is.False);
 
-            Assert.That(refused, Does.Contain("is a charging station of this gateway"));
+            Assert.That(refused, Does.Contain("signs in with its WebSocket login"));
 
         }
 

@@ -74,7 +74,15 @@ namespace cloud.charging.open.Gateway
         /// name servers, its time servers and its certificates are resources
         /// every node has.
         /// </summary>
-        public static readonly IReadOnlyList<String>  Resources = [ Connections, Stations ];
+        public static readonly IReadOnlyList<String>  Resources = [ Connections, Stations, Commissioning ];
+
+        /// <summary>
+        /// Commissioning over SSH, a tool speaking OCPP to this gateway on its
+        /// own SSH server: read, whether it is served and where; edited,
+        /// switched on or off; run, the tool let in. The administrators',
+        /// unless the file gives it to a role.
+        /// </summary>
+        public const String  Commissioning  = cloud.charging.open.protocols.OCPP.Node.OCPPServingNode.CommissioningResource;
 
         #endregion
 

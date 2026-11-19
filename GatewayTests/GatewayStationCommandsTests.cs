@@ -30,6 +30,7 @@ using cloud.charging.open.protocols.WWCP.Node.CommandLine;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
 using cloud.charging.open.protocols.OCPP.Node.Serving.CommandLine;
+using cloud.charging.open.protocols.WWCP.Node.Logins;
 
 using cloud.charging.open.Gateway.CommandLine;
 
@@ -284,7 +285,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(removed,                                           Is.EqualTo(new[] { $"The key {FingerprintOf(key)} lets 'cs001' in no more." }));
-                Assert.That(gw.StationLogins.TryGet("cs001", out var login),   Is.True);
+                Assert.That(gw.WebSocketLogins.TryGet("cs001", out var login),   Is.True);
                 Assert.That(login!.HasSSHKey,                                  Is.False);
             });
 
@@ -365,7 +366,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(keyGiven.First(),    Does.StartWith("'cs001' is a charging station of this gateway now"));
                 Assert.That(pinGiven.First(),    Does.StartWith("'cs001' is let in by the key pin "));
 
-                Assert.That(gateway!.StationLogins.TryGet("cs001", out var login) &&
+                Assert.That(gateway!.WebSocketLogins.TryGet("cs001", out var login) &&
                             login.Keys.Single().CreatedBy == "adam" &&
                             login.Pins.Single().AddedBy   == "adam", Is.True);
 

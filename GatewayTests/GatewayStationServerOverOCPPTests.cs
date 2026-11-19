@@ -34,6 +34,7 @@ using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
 
 using cloud.charging.open.protocols.OCPP.Node;
+using cloud.charging.open.protocols.WWCP.Node.Logins;
 
 #endregion
 
@@ -100,11 +101,11 @@ namespace cloud.charging.open.Gateway.Tests
                             File.WriteAllText(file, new JObject(
                                                         new JProperty("nts",         new JObject(new JProperty("groups", new JObject(new JProperty("legal", new JObject(new JProperty("enabled", false))))))),
                                                         new JProperty("ocpp",        new JObject(new JProperty("nodeId", "gw003"))),
-                                                        new JProperty("ocppServer",  new JObject(
+                                                        new JProperty("webSocketServer",  new JObject(
                                                             new JProperty("enabled",           true),
                                                             new JProperty("address",           "127.0.0.1"),
                                                             new JProperty("port",              port),
-                                                            new JProperty("securityProfiles",  new JArray(1)),
+                                                            new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS")),
                                                             new JProperty("subprotocols",      new JArray("ocpp2.1"))
                                                         ))
                                                     ).ToString());
@@ -119,7 +120,7 @@ namespace cloud.charging.open.Gateway.Tests
 
                         });
 
-            Assert.That(gateway.Connections.TryAddAuthentication("The CSMS's password", "basic", "gw003", ThePassword,
+            Assert.That(gateway.Connections.TryAddBasicAuthentication("gw003", ThePassword, "The CSMS's password",
                                                                   out var login, out var error),
                         Is.True, error);
 
@@ -180,6 +181,11 @@ namespace cloud.charging.open.Gateway.Tests
 
             public WebSocketServer Server { get; }
 
+            /// <summary>
+            /// What the gateway asked, in the order it asked it.
+            /// </summary>
+            public ConcurrentQueue<JArray> Asked { get; } = new();
+
             public CSMS(UInt16 Port, String Login, String Password)
             {
 
@@ -201,6 +207,7 @@ namespace cloud.charging.open.Gateway.Tests
 
                         // A request of the gateway's.
                         case 2:
+                            Asked.Enqueue(message);
                             await Server.SendTextMessage(connection,
                                                          new JArray(3, message[1], message[2].Value<String>() == "BootNotification"
                                                                                        ? new JObject(new JProperty("status",       "Accepted"),
@@ -379,10 +386,10 @@ namespace cloud.charging.open.Gateway.Tests
         #region (private) InTheFile / Listens(Port) / Until(Condition)
 
         /// <summary>
-        /// The section "ocppServer" as the configuration file has it now.
+        /// The section "webSocketServer" as the configuration file has it now.
         /// </summary>
         private JObject InTheFile
-            => JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["ocppServer"] as JObject ?? [];
+            => JObject.Parse(File.ReadAllText(gateway.ConfigFile.Path))["webSocketServer"] as JObject ?? [];
 
         /// <summary>
         /// Whether something listens on the given TCP port of 127.0.0.1.
@@ -451,7 +458,7 @@ namespace cloud.charging.open.Gateway.Tests
         private async Task<ClientWebSocket> AStation(String Id)
         {
 
-            Assert.That(gateway.StationLogins.TrySetPassword(Id, ThePassword, null, null, out _, out var error), Is.True, error);
+            Assert.That(gateway.WebSocketLogins.TrySetPassword(Id, ThePassword, null, null, out var error), Is.True, error);
 
             var client = new ClientWebSocket();
 
@@ -601,6 +608,35 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region ItRegistersWithItsCSMS_AsAStationDoes()
+
+        /// <summary>
+        /// Once its line up is connected, the gateway sends its CSMS its BootNotification - who it is,
+        /// and that it powered up - and stands accepted, as a charging station does: the same
+        /// registration, read the same way.
+        /// </summary>
+        [Test]
+        public async Task ItRegistersWithItsCSMS_AsAStationDoes()
+        {
+
+            Assert.That(await Until(() => gateway.RegistrationJSON()["2.1"]?["state"]?.Value<String>() == "Accepted"),
+                        Is.True,
+                        gateway.RegistrationJSON().ToString());
+
+            var boot = csms.Asked.FirstOrDefault(request => request[2]?.Value<String>() == "BootNotification");
+
+            Assert.Multiple(() => {
+                Assert.That(boot,                                                         Is.Not.Null, "no BootNotification reached the CSMS");
+                Assert.That(boot?[3]?["reason"]?.Value<String>(),                         Is.EqualTo("PowerUp"));
+                Assert.That(boot?[3]?["chargingStation"]?["vendorName"]?.Value<String>(), Is.Not.Empty);
+                Assert.That(gateway.RegistrationJSON()["2.1"]?["interval"]?.Value<Int32>(), Is.EqualTo(300));
+                Assert.That(gateway.RegistrationJSON().ContainsKey("1.6"),                Is.False, "a gateway speaks no OCPP 1.6 upwards");
+            });
+
+        }
+
+        #endregion
+
         #region WhatTakesEffectAtOnce_IsAcceptedAndWrittenDown()
 
         /// <summary>
@@ -624,10 +660,10 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(read["LogMessages"].Value,       Is.EqualTo("true"));
                 Assert.That(read["WaitingForARestart"].Value, Is.EqualTo(""));
 
-                Assert.That(InTheFile["securityProfiles"]?.Values<Int32>(),       Is.EqualTo(new[] { 1, 2 }));
+                Assert.That(InTheFile["clientAuthentication"]?.Values<String>(),  Is.EqualTo(new[] { "httpAuthWithoutTLS", "httpAuthOverTLS" }));
                 Assert.That(InTheFile["logging"]?["messages"]?.Value<Boolean>(),  Is.True);
 
-                Assert.That(page["securityProfiles"]?.Values<Int32>(),            Is.EqualTo(new[] { 1, 2 }), "the page reads something else");
+                Assert.That(page["clientAuthentication"]?.Values<String>(),       Is.EqualTo(new[] { "httpAuthWithoutTLS", "httpAuthOverTLS" }), "the page reads something else");
 
             });
 
@@ -735,8 +771,8 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(answer,                                          Is.Not.Null,                 "no answer at all");
                 Assert.That(answer?[0].Value<Int32>(),                       Is.EqualTo(4),               $"not refused: {answer?.ToString(Formatting.None)}");
                 Assert.That(answer?[2].Value<String>(),                      Is.EqualTo("SecurityError"));
-                Assert.That(InTheFile["securityProfiles"]?.Values<Int32>(),  Is.EqualTo(new[] { 1 }),     "a station changed the station port");
-                Assert.That(gateway.OCPPServerSettings.SecurityProfiles,     Is.EqualTo(new[] { 1 }),     "a station changed the station port");
+                Assert.That(InTheFile["clientAuthentication"]?.Values<String>(),  Is.EqualTo(new[] { "httpAuthWithoutTLS" }),  "a station changed the station port");
+                Assert.That(gateway.OCPPSecurityProfiles,                         Is.EqualTo(new[] { 1 }),                     "a station changed the station port");
             });
 
         }
@@ -838,7 +874,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task TheCSMSReadsAStationAndItsGroup_ButNoSecret()
         {
 
-            Assert.That(gateway.StationLogins.TrySetPassword("cs001", ThePassword, null, null, out _, out var error), Is.True, error);
+            Assert.That(gateway.WebSocketLogins.TrySetPassword("cs001", ThePassword, null, null, out var error), Is.True, error);
 
             var read = await GetOf(("StationLoginController",      "cs001",   "Group"),
                                    ("StationLoginController",      "cs001",   "HasPassword"),

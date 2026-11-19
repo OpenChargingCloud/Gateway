@@ -25,7 +25,7 @@ export * from '@node/api/client';
  * stations below it - its station server and who may sign in to it - under
  * the name a local controller gives them.
  */
-export type Resource = NodeResource | 'connections' | 'stations';
+export type Resource = NodeResource | 'connections' | 'stations' | 'commissioning';
 
 /** What somebody signed in to this gateway may do: an operation on a resource, written "dns:edit". */
 export type Permission = `${Resource}:${Operation}`;

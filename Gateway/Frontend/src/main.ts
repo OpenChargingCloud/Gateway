@@ -15,6 +15,7 @@ import { connectionsPage }        from '@ocpp/pages/connections';
 import { ocppServerPage }         from '@ocpp/pages/ocppServer';
 import { stationLoginsPage }      from '@ocpp/pages/stationLogins';
 import { clientTrustPage }        from '@ocpp/pages/clientTrust';
+import { commissioningPage }      from '@ocpp/pages/commissioning';
 import { setNodeNoun, setNodeTraits } from '@ocpp/settings';
 
 import { configurationPage } from './pages/configuration';
@@ -62,8 +63,9 @@ startNode({
             // The station server, as a local controller has it: the same
             // pages, paths, labels and rights.
             { path: '/configuration/ocpp-server',              label: 'Charging stations',   icon: 'fa-charging-station',  permission: [ 'stations:read' ]     },
-            { path: '/configuration/ocpp-server/logins',        label: 'Logins and groups',   icon: 'fa-users-gear',        permission: [ 'stations:read' ]     },
-            { path: '/configuration/ocpp-server/trust',         label: 'Accepted chains',     icon: 'fa-user-shield',       permission: [ 'certificates:read' ] }
+            { path: '/configuration/ocpp-server/logins',        label: 'WebSocket logins',    icon: 'fa-users-gear',        permission: [ 'stations:read' ]     },
+            { path: '/configuration/ocpp-server/trust',         label: 'Accepted chains',     icon: 'fa-user-shield',       permission: [ 'certificates:read' ] },
+            { path: '/configuration/commissioning',             label: 'Commissioning',       icon: 'fa-screwdriver-wrench', permission: [ 'commissioning:read' ] }
         ]),
         nodeMenu.logs
     ],
@@ -117,6 +119,7 @@ startNode({
         '/configuration/connections':               connectionsPage,
         '/configuration/ocpp-server':               ocppServerPage,
         '/configuration/ocpp-server/logins':        stationLoginsPage,
-        '/configuration/ocpp-server/trust':         clientTrustPage
+        '/configuration/ocpp-server/trust':         clientTrustPage,
+        '/configuration/commissioning':             commissioningPage
     }
 });

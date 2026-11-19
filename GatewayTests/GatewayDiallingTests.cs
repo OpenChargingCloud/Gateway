@@ -176,7 +176,7 @@ namespace cloud.charging.open.Gateway.Tests
                                                String           Password)
         {
 
-            Assert.That(Gateway.Connections.TryAddAuthentication("The CSMS's password", "basic", Login, Password,
+            Assert.That(Gateway.Connections.TryAddBasicAuthentication(Login, Password, "The CSMS's password",
                                                                   out var login, out var error),
                         Is.True, error);
 
@@ -233,7 +233,8 @@ namespace cloud.charging.open.Gateway.Tests
             Assert.Multiple(() => {
                 Assert.That(unnamed.Node.Id.ToString(),  Is.EqualTo(OCPPConfiguration.DefaultNodeId));
                 Assert.That(unnamed.Node.Model,          Is.EqualTo(OCPPConfiguration.DefaultModel));
-                Assert.That(NodeWording.Noun,            Is.EqualTo("gateway"));
+                Assert.That(unnamed.NodeNoun,            Is.EqualTo("gateway"));
+                Assert.That(unnamed.Connections.NodeNoun, Is.EqualTo("gateway"));
             });
 
             await unnamed.DisposeAsync();

@@ -64,7 +64,7 @@ namespace cloud.charging.open.Gateway
     ///
     /// And it is dialled, as a local controller is: by the charging stations
     /// and local controllers below it, on its station server - its section
-    /// "ocppServer", the stations that may sign in and their login groups, the
+    /// "webSocketServer", the stations that may sign in and their login groups, the
     /// chains a station's certificate may lead to and the keys and
     /// certificates it presents, the same as a local controller's because they
     /// are OCPPServingNode's (see Gateway.Serving.cs) - and by a CSMS it
@@ -384,9 +384,16 @@ namespace cloud.charging.open.Gateway
         /// it calls itself started, so that a gateway whose stations cannot
         /// connect does not say it is up.
         /// </summary>
-        protected override Task OnListening()
+        protected override async Task OnListening()
+        {
 
-            => StartOCPPServer();
+            await StartOCPPServer();
+
+            // A tool speaking OCPP to this gateway over its SSH server, where
+            // the file says so - see OCPPServingNode.Commissioning.cs.
+            StartCommissioning();
+
+        }
 
         #endregion
 
@@ -401,6 +408,8 @@ namespace cloud.charging.open.Gateway
         {
 
             await HangUp();
+
+            StopCommissioning("the gateway is stopping");
 
             await StopOCPPServer();
 
