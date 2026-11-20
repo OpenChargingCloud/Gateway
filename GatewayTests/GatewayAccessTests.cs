@@ -431,7 +431,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             var looked           = await @operator.GetAsync("api/v1/configuration/connections");
             var written          = await @operator.PostAsync("api/v1/configuration/connections",
-                                                             new StringContent("""{ "description": "CSMS", "url": "ws://127.0.0.1:1/gw001", "connectionType": "CSMS" }""",
+                                                             new StringContent("""{ "description": { "en": "CSMS" }, "url": "ws://127.0.0.1:1/gw001", "connectionType": "CSMS" }""",
                                                                                Encoding.UTF8, "application/json"));
             var refusal          = await written.Content.ReadAsStringAsync();
             var me               = JObject.Parse(await (await @operator.GetAsync("api/v1/auth/me")).Content.ReadAsStringAsync());

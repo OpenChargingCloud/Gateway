@@ -19,8 +19,10 @@
 
 using NUnit.Framework;
 
+using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.WebSocket;
+using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
@@ -176,11 +178,11 @@ namespace cloud.charging.open.Gateway.Tests
                                                String           Password)
         {
 
-            Assert.That(Gateway.Connections.TryAddBasicAuthentication(Login, Password, "The CSMS's password",
+            Assert.That(Gateway.Connections.TryAddPasswordAuthentication(Login, Password, I18NString.Create("The CSMS's password"),
                                                                   out var login, out var error),
                         Is.True, error);
 
-            Assert.That(Gateway.Connections.TryAddConnection("CSMS", $"ws://127.0.0.1:{CSMS.IPPort}/{Login}", "CSMS",
+            Assert.That(Gateway.Connections.TryAddConnection(I18NString.Create("CSMS"), URL.Parse($"ws://127.0.0.1:{CSMS.IPPort}/{Login}"), "CSMS",
                                                              true, login, null, out var connection, out error),
                         Is.True, error);
 
@@ -265,7 +267,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             GatewayFrom();
 
-            Assert.That(ConnectionEntry.Validate("CSMS over FTP", "ftp://csms.example.org", null, null, out _, out _, out _, out var error),
+            Assert.That(ConnectionEntry.Validate(I18NString.Create("CSMS over FTP"), "ftp://csms.example.org", null, null, out _, out _, out _, out var error),
                         Is.False);
 
             Assert.Multiple(() => {

@@ -27,8 +27,10 @@ using Newtonsoft.Json.Linq;
 
 using NUnit.Framework;
 
+using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.WebSocket;
+using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
@@ -120,11 +122,11 @@ namespace cloud.charging.open.Gateway.Tests
 
                         });
 
-            Assert.That(gateway.Connections.TryAddBasicAuthentication("gw003", ThePassword, "The CSMS's password",
+            Assert.That(gateway.Connections.TryAddPasswordAuthentication("gw003", ThePassword, I18NString.Create("The CSMS's password"),
                                                                   out var login, out var error),
                         Is.True, error);
 
-            Assert.That(gateway.Connections.TryAddConnection("CSMS", $"ws://127.0.0.1:{csms.Server.IPPort}/gw003", "CSMS",
+            Assert.That(gateway.Connections.TryAddConnection(I18NString.Create("CSMS"), URL.Parse($"ws://127.0.0.1:{csms.Server.IPPort}/gw003"), "CSMS",
                                                              true, login, null, out _, out error),
                         Is.True, error);
 
@@ -458,7 +460,7 @@ namespace cloud.charging.open.Gateway.Tests
         private async Task<ClientWebSocket> AStation(String Id)
         {
 
-            Assert.That(gateway.WebSocketLogins.TrySetPassword(Id, ThePassword, null, null, out var error), Is.True, error);
+            Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication(Id, ThePassword, null, null, out var error), Is.True, error);
 
             var client = new ClientWebSocket();
 
@@ -874,7 +876,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task TheCSMSReadsAStationAndItsGroup_ButNoSecret()
         {
 
-            Assert.That(gateway.WebSocketLogins.TrySetPassword("cs001", ThePassword, null, null, out var error), Is.True, error);
+            Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication("cs001", ThePassword, null, null, out var error), Is.True, error);
 
             var read = await GetOf(("StationLoginController",      "cs001",   "Group"),
                                    ("StationLoginController",      "cs001",   "HasPassword"),

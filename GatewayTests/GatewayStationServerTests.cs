@@ -26,7 +26,9 @@ using Newtonsoft.Json.Linq;
 
 using NUnit.Framework;
 
+using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod;
+using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 
 using cloud.charging.open.protocols.WWCP.Node.Certificates;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
@@ -198,11 +200,11 @@ namespace cloud.charging.open.Gateway.Tests
                                                         new JProperty("ocpp", new JObject(new JProperty("nodeId", Name)))
                                                     ));
 
-            Assert.That(below!.Connections.TryAddBasicAuthentication(Name, Password, "What it signs in to the gateway above with",
+            Assert.That(below!.Connections.TryAddPasswordAuthentication(Name, Password, I18NString.Create("What it signs in to the gateway above with"),
                                                                 out var login, out var error),
                         Is.True, error);
 
-            Assert.That(below.Connections.TryAddConnection("The gateway above", Door(Above, Name), "CSMS", true, login, null,
+            Assert.That(below.Connections.TryAddConnection(I18NString.Create("The gateway above"), URL.Parse(Door(Above, Name)), "CSMS", true, login, null,
                                                            out var connection, out error),
                         Is.True, error);
 
@@ -633,7 +635,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(above.OCPPServerRunning, Is.True, "the station server of the gateway above does not listen");
 
-            Assert.That(above.WebSocketLogins.TrySetPassword("gw-below", ThePassword, null, null, out var error), Is.True, error);
+            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication("gw-below", ThePassword, null, null, out var error), Is.True, error);
 
             var (below, connection) = await AGatewayBelowDialling(above, "gw-below", ThePassword);
 
@@ -668,10 +670,10 @@ namespace cloud.charging.open.Gateway.Tests
 
             var above = await AGatewayAbove();
 
-            Assert.That(above.WebSocketLogins.TrySetPassword("csms01", ThePassword, null, "What the CSMS signs in with", out var error),
+            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication("csms01", ThePassword, null, I18NString.Create("What the CSMS signs in with"), out var error),
                         Is.True, error);
 
-            Assert.That(above.Connections.TryAddConnection("The CSMS, dialling in", Door(above, "csms01"), "CSMS", true, null, null,
+            Assert.That(above.Connections.TryAddConnection(I18NString.Create("The CSMS, dialling in"), URL.Parse(Door(above, "csms01")), "CSMS", true, null, null,
                                                            out var inbound, out error,
                                                            Inbound: true),
                         Is.True, error);
@@ -707,11 +709,11 @@ namespace cloud.charging.open.Gateway.Tests
 
             var gateway = AGateway();
 
-            Assert.That(gateway.Connections.TryAddBasicAuthentication("csms01", ThePassword, "What the gateway signs in with",
+            Assert.That(gateway.Connections.TryAddPasswordAuthentication("csms01", ThePassword, I18NString.Create("What the gateway signs in with"),
                                                                  out var login, out var error),
                         Is.True, error);
 
-            Assert.That(gateway.Connections.TryAddConnection("A CSMS with credentials of the gateway", Door(gateway, "csms01"), "CSMS", true, login, null,
+            Assert.That(gateway.Connections.TryAddConnection(I18NString.Create("A CSMS with credentials of the gateway"), URL.Parse(Door(gateway, "csms01")), "CSMS", true, login, null,
                                                              out _, out var refused,
                                                              Inbound: true),
                         Is.False);
