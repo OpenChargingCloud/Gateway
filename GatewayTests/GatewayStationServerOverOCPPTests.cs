@@ -613,13 +613,16 @@ namespace cloud.charging.open.Gateway.Tests
         #region ItRegistersWithItsCSMS_AsAStationDoes()
 
         /// <summary>
-        /// Once its line up is connected, the gateway sends its CSMS its BootNotification - who it is,
+        /// Asked to, the gateway sends its CSMS its BootNotification over its line up - who it is,
         /// and that it powered up - and stands accepted, as a charging station does: the same
         /// registration, read the same way.
         /// </summary>
         [Test]
         public async Task ItRegistersWithItsCSMS_AsAStationDoes()
         {
+
+            // Sent by no node by itself: asked for, as after a reboot.
+            _ = gateway.SendBootNotifications();
 
             Assert.That(await Until(() => gateway.RegistrationJSON()["2.1"]?["state"]?.Value<String>() == "Accepted"),
                         Is.True,
