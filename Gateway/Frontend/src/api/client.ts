@@ -13,14 +13,14 @@ import { nodeAPI,
 // who is signed in - and how it is asked are WWCP_Node's, and every page here
 // reads them from this module as before. What follows is what a gateway says
 // of its own: its resource, its configuration's own sections and the kinds its
-// store keeps. Its connections are asked as every node that dials asks for
+// store keeps. Its connections are asked as every node that connects asks for
 // them - WWCP_OCPP_Node's connectionsAPI, used by the pages of "@ocpp/...".
 export * from '@node/api/client';
 
 
 /**
  * What a role may be allowed to touch on this gateway: what every node has,
- * its connections - where it dials, what it proves itself with there and
+ * its connections - where it connects, what it proves itself with there and
  * where each stands - under the name a charging station gives them, and the
  * stations below it - its station server and who may sign in to it - under
  * the name a local controller gives them.

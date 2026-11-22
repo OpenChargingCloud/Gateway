@@ -99,7 +99,7 @@ namespace cloud.charging.open.Gateway.Tests
         {
 
             gateway = await TestPorts.StartedOnFreshPorts(() => new Gateway(
-                          HTTPPort:        IPPort.Parse(TestPorts.Free()),
+                          HTTPPort:        TestPorts.Free(),
                           AccountsPath:    Path.Combine(directory, "accounts"),
                           ConfigFile:      new WWCPConfigFile(Path.Combine(directory, WWCPConfigFile.DefaultFileName)),
                           LogPath:         Path.Combine(directory, "logs"),

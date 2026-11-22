@@ -51,7 +51,7 @@ namespace cloud.charging.open.Gateway
         #region Resources
 
         /// <summary>
-        /// Where this gateway dials, what it proves itself with there - the
+        /// Where this gateway connects, what it proves itself with there - the
         /// credentials, and the SSH keys made here - and where each connection
         /// stands: edited, any of that changed; run, a connection tested. The
         /// name and the meaning a charging station gives it, which the pages of

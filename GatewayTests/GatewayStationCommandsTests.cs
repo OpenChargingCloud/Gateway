@@ -121,7 +121,7 @@ namespace cloud.charging.open.Gateway.Tests
             File.WriteAllText(configuration, NoTimeServers);
 
             gateway = new Gateway(
-                          HTTPPort:          IPPort.Parse(TestPorts.Free()),
+                          HTTPPort:          TestPorts.Free(),
                           AccountsPath:      Path.Combine(directory, "accounts"),
                           ConfigFile:        new WWCPConfigFile(configuration),
                           CertificatesPath:  Path.Combine(directory, "certificates"),
@@ -151,7 +151,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// over SSH: made for the purpose and put in the group of the given
         /// role.
         /// </summary>
-        private async Task<NodeCLI> OverSSHAs(String  Name,
+        private async Task<NodeCLI> OverSSHAs(User_Id Name,
                                               String  Role)
         {
 
@@ -159,8 +159,8 @@ namespace cloud.charging.open.Gateway.Tests
                         organization is Organization, Is.True, "the gateway's organization is not there");
 
             var account = await gateway.ExtAPI.CreateUser(
-                                    User_Id.Parse(Name),
-                                    I18NString.Create(Languages.en, Name),
+                                    Name,
+                                    I18NString.Create(Languages.en, Name.ToString()),
                                     SimpleEMailAddress.Parse($"{Name}@localhost"),
                                     User2OrganizationEdgeLabel.IsMember,
                                     (Organization) organization!,
@@ -172,7 +172,7 @@ namespace cloud.charging.open.Gateway.Tests
                                 );
 
             Assert.That(account,                                                                  Is.Not.Null, $"the account '{Name}' was not made");
-            Assert.That(gateway.ExtAPI.TryGetUser(User_Id.Parse(Name), out var stored),           Is.True);
+            Assert.That(gateway.ExtAPI.TryGetUser(Name, out var stored),           Is.True);
             Assert.That(gateway.ExtAPI.TryGetUserGroup(UserGroup_Id.Parse(Role), out var group),  Is.True, $"the gateway has no group '{Role}'");
             Assert.That((await gateway.ExtAPI.AddUserToUserGroup((User) stored!, User2UserGroupEdgeLabel.IsMember, (UserGroup) group!)).IsSuccess,
                         Is.True, $"'{Name}' could not be put in '{Role}'");
@@ -241,7 +241,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(help,   Has.Some.StartsWith("stationPins [<station> [add <key pin> [<label>] | remove <key pin>]]"));
 
                 Assert.That(keys,   Has.Some.EqualTo("No charging station of this gateway has an SSH key."));
-                Assert.That(keys,   Has.Some.EqualTo("OCPP over SSH is switched off: no charging station signs in over SSH."));
+                Assert.That(keys,   Has.Some.EqualTo("OCPP-over-SSH is switched off: no charging station signs in over SSH."));
                 Assert.That(pins,   Has.Some.EqualTo("No charging station of this gateway has a key pin."));
 
             });
@@ -285,7 +285,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.Multiple(() => {
                 Assert.That(removed,                                           Is.EqualTo(new[] { $"The key {FingerprintOf(key)} lets 'cs001' in no more." }));
-                Assert.That(gw.WebSocketLogins.TryGet("cs001", out var login),   Is.True);
+                Assert.That(gw.WebSocketLogins.TryGet(User_Id.Parse("cs001"), out var login),   Is.True);
                 Assert.That(login!.HasSSHKey,                                  Is.False);
             });
 
@@ -347,8 +347,8 @@ namespace cloud.charging.open.Gateway.Tests
             var key              = SshHostKey.GenerateEd25519();
             var pin              = new String('a', 64);
 
-            using var @operator  = await OverSSHAs("otto", "operator");
-            using var admin      = await OverSSHAs("adam", "systemadmin");
+            using var @operator  = await OverSSHAs(User_Id.Parse("otto"), "operator");
+            using var admin      = await OverSSHAs(User_Id.Parse("adam"), "systemadmin");
 
             var lookedAtKeys     = await @operator.Execute("stationKeys");
             var lookedAtPins     = await @operator.Execute("stationPins");
@@ -366,7 +366,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(keyGiven.First(),    Does.StartWith("'cs001' is a charging station of this gateway now"));
                 Assert.That(pinGiven.First(),    Does.StartWith("'cs001' is let in by the key pin "));
 
-                Assert.That(gateway!.WebSocketLogins.TryGet("cs001", out var login) &&
+                Assert.That(gateway!.WebSocketLogins.TryGet(User_Id.Parse("cs001"), out var login) &&
                             login.Keys.Single().CreatedBy == "adam" &&
                             login.Pins.Single().AddedBy   == "adam", Is.True);
 

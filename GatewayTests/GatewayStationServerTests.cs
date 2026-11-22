@@ -45,10 +45,10 @@ namespace cloud.charging.open.Gateway.Tests
 {
 
     /// <summary>
-    /// A gateway is dialled as a local controller is: on its station server,
+    /// A gateway is connected to as a local controller is: on its station server,
     /// by what is below it - here another gateway, which is what a local
     /// controller or a charging station below it would be to it - signing in
-    /// as a station that may; and by a CSMS it cannot dial, as a connection
+    /// as a station that may; and by a CSMS it cannot connect to, as a connection
     /// the other end makes, on the same port.
     /// </summary>
     /// <remarks>
@@ -61,7 +61,7 @@ namespace cloud.charging.open.Gateway.Tests
     /// what signs in there is let in by what the gateway wrote down.
     /// </para>
     /// <para>
-    /// Two gateways, the one below dialling the one above: a gateway that dials
+    /// Two gateways, the one below connecting to the one above: a gateway that connects
     /// is exactly what a node below a gateway does, and it says whether it got
     /// in.
     /// </para>
@@ -145,7 +145,7 @@ namespace cloud.charging.open.Gateway.Tests
                                     ).ToString());
 
             var gateway = new Gateway(
-                              HTTPPort:        IPPort.Parse(TestPorts.Free()),
+                              HTTPPort:        TestPorts.Free(),
                               AccountsPath:    Path.Combine(directory, "accounts"),
                               ConfigFile:      new WWCPConfigFile(file),
                               LogToConsole:    false,
@@ -164,7 +164,7 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// A gateway whose station server is switched on, at a free port - the
-        /// one the others dial - started.
+        /// one the others connect to - started.
         /// </summary>
         private async Task<Gateway> AGatewayAbove()
         {
@@ -174,7 +174,7 @@ namespace cloud.charging.open.Gateway.Tests
             await TestPorts.StartedOnFreshPorts(() => above = AGateway(
                                                         new JProperty("ocpp",       new JObject(new JProperty("nodeId",  "gw-above"))),
                                                         new JProperty("webSocketServer", new JObject(new JProperty("enabled", true),
-                                                                                                new JProperty("port",    TestPorts.Free())))
+                                                                                                new JProperty("port",    TestPorts.Free().ToUInt16())))
                                                     ));
 
             return above!;
@@ -183,28 +183,28 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
-        #region (helper) AGatewayBelowDialling(Above, Name, Password)
+        #region (helper) AGatewayBelowConnecting(Above, Name, Password)
 
         /// <summary>
-        /// A gateway called by the given name that dials the given one above it
+        /// A gateway called by the given name that connects to the given one above it
         /// with the given password, started.
         /// </summary>
-        private async Task<(Gateway Below, String Connection)> AGatewayBelowDialling(Gateway  Above,
-                                                                                     String   Name,
+        private async Task<(Gateway Below, String Connection)> AGatewayBelowConnecting(Gateway  Above,
+                                                                                     User_Id  Name,
                                                                                      String   Password)
         {
 
             Gateway? below = null;
 
             await TestPorts.StartedOnFreshPorts(() => below = AGateway(
-                                                        new JProperty("ocpp", new JObject(new JProperty("nodeId", Name)))
+                                                        new JProperty("ocpp", new JObject(new JProperty("nodeId", Name.ToString())))
                                                     ));
 
             Assert.That(below!.Connections.TryAddPasswordAuthentication(Name, Password, I18NString.Create("What it signs in to the gateway above with"),
                                                                 out var login, out var error),
                         Is.True, error);
 
-            Assert.That(below.Connections.TryAddConnection(I18NString.Create("The gateway above"), URL.Parse(Door(Above, Name)), "CSMS", true, login, null,
+            Assert.That(below.Connections.TryAddConnection(I18NString.Create("The gateway above"), URL.Parse(Door(Above, Name.ToString())), "CSMS", true, login, null,
                                                            out var connection, out error),
                         Is.True, error);
 
@@ -222,7 +222,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// a server key the stations pin where told, and without one, so
         /// unencrypted, where not - started.
         /// </summary>
-        private async Task<Gateway> AGatewayTakingHTTP3(UInt16   Port,
+        private async Task<Gateway> AGatewayTakingHTTP3(IPPort   Port,
                                                         Boolean  WithAServerKey)
         {
 
@@ -238,7 +238,7 @@ namespace cloud.charging.open.Gateway.Tests
                                                           new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-http3"))),
                                                           new JProperty("webSocketServer", new JObject(new JProperty("enabled",           true),
                                                                                                   new JProperty("address",           "127.0.0.1"),
-                                                                                                  new JProperty("port",              Port),
+                                                                                                  new JProperty("port",              Port.ToUInt16()),
                                                                                                   new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS", "httpAuthOverTLS")),
                                                                                                   new JProperty("http3",             true)))
                                                       ));
@@ -278,12 +278,12 @@ namespace cloud.charging.open.Gateway.Tests
         /// well: a station that sends no certificate of its own may be turned
         /// away after it has been shown the server's.
         /// </remarks>
-        private static async Task<X509Certificate2> ShownOn(UInt16 Port)
+        private static async Task<X509Certificate2> ShownOn(IPPort Port)
         {
 
             using var tcp = new TcpClient();
 
-            await tcp.ConnectAsync(System.Net.IPAddress.Loopback, Port);
+            await tcp.ConnectAsync(System.Net.IPAddress.Loopback, Port.ToInt32());
 
             X509Certificate2? shown = null;
 
@@ -311,7 +311,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// A port free for UDP as for TCP: HTTP/3 comes to the UDP port of the
         /// number of the TCP one.
         /// </summary>
-        private static UInt16 APortFreeForBoth()
+        private static IPPort APortFreeForBoth()
         {
 
             for (var attempt = 0; attempt < 200; attempt++)
@@ -329,7 +329,7 @@ namespace cloud.charging.open.Gateway.Tests
                     tcp4.Start();
                     tcp4.Stop();
 
-                    return (UInt16) port;
+                    return IPPort.Parse((UInt16) port);
 
                 }
                 catch (System.Net.Sockets.SocketException)
@@ -459,13 +459,13 @@ namespace cloud.charging.open.Gateway.Tests
 
             await Until(() => server.HTTP3Port is not null || server.WhyNoHTTP3 is not null);
 
-            Assert.That(server.HTTP3Port?.ToUInt16(), Is.EqualTo(port), "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
+            Assert.That(server.HTTP3Port, Is.EqualTo(port), "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
 
             var state = gateway.OCPPServerConfigurationJSON();
 
             Assert.Multiple(() => {
                 Assert.That(state.Value<Boolean>("http3"),                      Is.True);
-                Assert.That(state["state"]!.Value<Int32?>("http3Port"),         Is.EqualTo(port));
+                Assert.That(state["state"]!.Value<Int32?>("http3Port"),         Is.EqualTo(port.ToInt32()));
                 Assert.That(state["state"]!.Value<String?>("http3Problem"),     Is.Null);
             });
 
@@ -481,7 +481,7 @@ namespace cloud.charging.open.Gateway.Tests
             // And on again.
             Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("http3", true)), out error), Is.True, error);
 
-            Assert.That(await Until(() => server.HTTP3Port?.ToUInt16() == port), Is.True, "HTTP/3 was not taken again: " + server.WhyNoHTTP3);
+            Assert.That(await Until(() => server.HTTP3Port == port), Is.True, "HTTP/3 was not taken again: " + server.WhyNoHTTP3);
 
             // A port of its own for OCPP 1.6 is no more.
             Assert.That(gateway.TryUpdateOCPPServerConfiguration(new JObject(new JProperty("port16", 9444)), out error), Is.False);
@@ -517,7 +517,7 @@ namespace cloud.charging.open.Gateway.Tests
                                                           new JProperty("ocpp",       new JObject(new JProperty("nodeId", "gw-keys"))),
                                                           new JProperty("webSocketServer", new JObject(new JProperty("enabled",           true),
                                                                                                   new JProperty("address",           "127.0.0.1"),
-                                                                                                  new JProperty("port",              port),
+                                                                                                  new JProperty("port",              port.ToUInt16()),
                                                                                                   new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS", "httpAuthOverTLS"))))
                                                       ));
 
@@ -572,7 +572,7 @@ namespace cloud.charging.open.Gateway.Tests
             var gateway = await AGatewayTakingHTTP3(port, WithAServerKey: true);
             var server  = gateway.StationServer!;
 
-            Assert.That(await Until(() => server.HTTP3Port?.ToUInt16() == port), Is.True, "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
+            Assert.That(await Until(() => server.HTTP3Port == port), Is.True, "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
 
             Assert.That(gateway.Certificates.TryCreateServerKey(Gateway.StationListener, null, AsNext: true, out var next, out var error), Is.True, error);
             Assert.That(gateway.Certificates.TrySwitchToNextKey(Gateway.StationListener, next!.KeyPin, out _, out error), Is.True, error);
@@ -581,7 +581,7 @@ namespace cloud.charging.open.Gateway.Tests
                         Is.True, "HTTP/3 was not started again after the switch: " + server.WhyNoHTTP3);
 
             Assert.Multiple(() => {
-                Assert.That(server.HTTP3Port?.ToUInt16(), Is.EqualTo(port), "HTTP/3 is not taken on its port after the switch: " + server.WhyNoHTTP3);
+                Assert.That(server.HTTP3Port, Is.EqualTo(port), "HTTP/3 is not taken on its port after the switch: " + server.WhyNoHTTP3);
                 Assert.That(gateway.OCPPServerKeyPin,     Is.EqualTo(next.KeyPin));
             });
 
@@ -622,7 +622,7 @@ namespace cloud.charging.open.Gateway.Tests
         #region WhatIsBelowSignsInAsAStationThatMay()
 
         /// <summary>
-        /// The gateway below dials the one above as a charging station would,
+        /// The gateway below connects to the one above as a charging station would,
         /// under its name with its password: let in where the gateway above
         /// has it as a station that may sign in, and turned away where it has
         /// another password.
@@ -635,81 +635,81 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(above.OCPPServerRunning, Is.True, "the station server of the gateway above does not listen");
 
-            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication("gw-below", ThePassword, null, null, out var error), Is.True, error);
+            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse("gw-below"), ThePassword, null, null, out var error), Is.True, error);
 
-            var (below, connection) = await AGatewayBelowDialling(above, "gw-below", ThePassword);
+            var (below, connection) = await AGatewayBelowConnecting(above, User_Id.Parse("gw-below"), ThePassword);
 
-            Assert.That(await Until(() => below.DialledConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
+            Assert.That(await Until(() => below.OutboundConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
                         Is.True,
-                        below.DialledConnections.GetValueOrDefault(connection) ?? "never dialled");
+                        below.OutboundConnections.GetValueOrDefault(connection) ?? "never connected");
 
             Assert.That(await Until(() => above.StationServer?.WebSocketConnections.Any() == true), Is.True,
                         "the gateway below says it is connected, and the one above has nobody");
 
-            var (stranger, guessed) = await AGatewayBelowDialling(above, "gw-stranger", ThePassword);
+            var (stranger, guessed) = await AGatewayBelowConnecting(above, User_Id.Parse("gw-stranger"), ThePassword);
 
             Assert.That(await Until(() => stranger.ConnectionStates.GetValueOrDefault(guessed)?.Status == ConnectionStatus.Refused),
                         Is.True,
-                        stranger.DialledConnections.GetValueOrDefault(guessed) ?? "never dialled");
+                        stranger.OutboundConnections.GetValueOrDefault(guessed) ?? "never connected");
 
         }
 
         #endregion
 
-        #region ACSMSThatDialsIsLetInAsAConnectionTheOtherEndMakes()
+        #region ACSMSThatConnectsIsLetInAsAConnectionTheOtherEndMakes()
 
         /// <summary>
-        /// A CSMS the gateway cannot dial dials it, on the port of its stations,
+        /// A CSMS the gateway cannot connect to connects to it, on the port of its stations,
         /// under the name its connection's address ends with and with the
         /// password that connection names - and is a connection of the gateway
         /// from then on, not a station of it.
         /// </summary>
         [Test]
-        public async Task ACSMSThatDialsIsLetInAsAConnectionTheOtherEndMakes()
+        public async Task ACSMSThatConnectsIsLetInAsAConnectionTheOtherEndMakes()
         {
 
             var above = await AGatewayAbove();
 
-            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication("csms01", ThePassword, null, I18NString.Create("What the CSMS signs in with"), out var error),
+            Assert.That(above.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse("csms01"), ThePassword, null, I18NString.Create("What the CSMS signs in with"), out var error),
                         Is.True, error);
 
-            Assert.That(above.Connections.TryAddConnection(I18NString.Create("The CSMS, dialling in"), URL.Parse(Door(above, "csms01")), "CSMS", true, null, null,
+            Assert.That(above.Connections.TryAddConnection(I18NString.Create("The CSMS, connecting"), URL.Parse(Door(above, "csms01")), "CSMS", true, null, null,
                                                            out var inbound, out error,
                                                            Inbound: true),
                         Is.True, error);
 
-            // What dials in here is a gateway that dials as a CSMS would: under
+            // What connects here is a gateway that connects as a CSMS would: under
             // the name of the connection, with its password.
-            var (csms, connection) = await AGatewayBelowDialling(above, "csms01", ThePassword);
+            var (csms, connection) = await AGatewayBelowConnecting(above, User_Id.Parse("csms01"), ThePassword);
 
-            Assert.That(await Until(() => csms.DialledConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
+            Assert.That(await Until(() => csms.OutboundConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
                         Is.True,
-                        csms.DialledConnections.GetValueOrDefault(connection) ?? "never dialled");
+                        csms.OutboundConnections.GetValueOrDefault(connection) ?? "never connected");
 
             Assert.That(await Until(() => above.ConnectionStates.GetValueOrDefault(inbound)?.Status == ConnectionStatus.Connected),
                         Is.True,
-                        above.DialledConnections.GetValueOrDefault(inbound) ?? "never let in");
+                        above.OutboundConnections.GetValueOrDefault(inbound) ?? "never let in");
 
-            Assert.That(above.WebSocketLogins.Logins.Select(login => login.Id), Is.EqualTo(new[] { "csms01" }), "the CSMS signed in with another login than its own");
+            Assert.That(above.WebSocketLogins.Logins.Select(login => login.Login), Is.EqualTo(new[] { User_Id.Parse("csms01") }), "the CSMS signed in with another login than its own");
 
         }
 
         #endregion
 
-        #region ACSMSThatDials_SignsInWithItsWebSocketLogin()
+        #region ACSMSThatConnects_SignsInWithItsWebSocketLogin()
 
         /// <summary>
-        /// A CSMS that dials and a station come in over the same port, and sign
+        /// A CSMS that connects and a station come in over the same port, and sign
         /// in alike, with a WebSocket login: credentials of the gateway, which
-        /// are what it proves itself with where it dials, are no way in.
+        /// are what it proves itself with where it connects, are no way in.
         /// </summary>
         [Test]
-        public void ACSMSThatDials_SignsInWithItsWebSocketLogin()
+        public void ACSMSThatConnects_SignsInWithItsWebSocketLogin()
         {
 
             var gateway = AGateway();
 
-            Assert.That(gateway.Connections.TryAddPasswordAuthentication("csms01", ThePassword, I18NString.Create("What the gateway signs in with"),
+            Assert.That(gateway.Connections.TryAddPasswordAuthentication(User_Id.Parse("csms01"), ThePassword, I18NString.Create("What the gateway signs in with"),
                                                                  out var login, out var error),
                         Is.True, error);
 

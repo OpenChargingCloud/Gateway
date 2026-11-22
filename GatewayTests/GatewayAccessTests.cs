@@ -112,7 +112,7 @@ namespace cloud.charging.open.Gateway.Tests
             File.WriteAllText(file, NoTimeServers);
 
             gateway    = new Gateway(
-                             HTTPPort:        IPPort.Parse(port),
+                             HTTPPort:        port,
                              AccountsPath:    Path.Combine(directory, "accounts"),
                              ConfigFile:      new WWCPConfigFile(file),
                              LogToConsole:    false,
@@ -134,7 +134,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// made for the purpose and put in the group of the given role - made
         /// the way the gateway makes its first one, so that it may sign in.
         /// </summary>
-        private async Task<HttpClient> SignedInAs(String  Name,
+        private async Task<HttpClient> SignedInAs(User_Id Name,
                                                   String  Role)
         {
 
@@ -144,8 +144,8 @@ namespace cloud.charging.open.Gateway.Tests
                         organization is Organization, Is.True, "the gateway's organization is not there");
 
             var account = await gateway.ExtAPI.CreateUser(
-                                    User_Id.Parse(Name),
-                                    I18NString.Create(Languages.en, Name),
+                                    Name,
+                                    I18NString.Create(Languages.en, Name.ToString()),
                                     SimpleEMailAddress.Parse($"{Name}@localhost"),
                                     User2OrganizationEdgeLabel.IsMember,
                                     (Organization) organization!,
@@ -158,7 +158,7 @@ namespace cloud.charging.open.Gateway.Tests
                                 );
 
             Assert.That(account,                                                                  Is.Not.Null, $"the account '{Name}' was not made");
-            Assert.That(gateway.ExtAPI.TryGetUser(User_Id.Parse(Name), out var stored),           Is.True);
+            Assert.That(gateway.ExtAPI.TryGetUser(Name, out var stored),           Is.True);
             Assert.That(gateway.ExtAPI.TryGetUserGroup(UserGroup_Id.Parse(Role), out var group),  Is.True, $"the gateway has no group '{Role}'");
 
             var joined = await gateway.ExtAPI.AddUserToUserGroup((User) stored!, User2UserGroupEdgeLabel.IsMember, (UserGroup) group!);
@@ -225,7 +225,7 @@ namespace cloud.charging.open.Gateway.Tests
             var node = GatewayFrom();
 
             Assert.Multiple(() => {
-                Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "support", "operator", WWCPNode.AdminRole }));
+                Assert.That(node.Roles,             Is.EqualTo(new[] { "viewer", "support", "operator", WWCPNode.AdminRole.ToString() }));
                 Assert.That(node.Access.Resources,  Is.EqualTo(NodeResources.All.Append(GatewayAccess.Connections).Append(GatewayAccess.Stations).Append(GatewayAccess.Commissioning)));
                 Assert.That(GatewayAccess.Connections, Is.EqualTo("connections"),
                             "the pages of the connections ask for it under the name a charging station gives it");
@@ -314,7 +314,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
-            using var @operator  = await SignedInAs("operator1", "operator");
+            using var @operator  = await SignedInAs(User_Id.Parse("operator1"), "operator");
 
             var looked           = await @operator.GetAsync("api/v1/configuration/dns");
             var changed          = await Put(@operator, "api/v1/configuration/dns", "{}");
@@ -351,7 +351,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
-            using var @operator  = await SignedInAs("operator2", "operator");
+            using var @operator  = await SignedInAs(User_Id.Parse("operator2"), "operator");
 
             var looked           = await @operator.GetAsync("api/v1/certificates");
             var uploaded         = await @operator.PostAsync("api/v1/certificates",
@@ -389,7 +389,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
-            using var @operator  = await SignedInAs("operator3", "operator");
+            using var @operator  = await SignedInAs(User_Id.Parse("operator3"), "operator");
 
             var file             = Path.Combine(directory, WWCPConfigFile.DefaultFileName);
             var fileBefore       = File.ReadAllText(file);
@@ -417,7 +417,7 @@ namespace cloud.charging.open.Gateway.Tests
 
         /// <summary>
         /// The connections as a browser signed in as an operator sees them, at
-        /// the routes every node that dials has: they open, and writing one
+        /// the routes every node that connects has: they open, and writing one
         /// down is refused with the role to ask for - and nothing refused
         /// reached the store.
         /// </summary>
@@ -427,7 +427,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(GatewayFrom);
 
-            using var @operator  = await SignedInAs("operator4", "operator");
+            using var @operator  = await SignedInAs(User_Id.Parse("operator4"), "operator");
 
             var looked           = await @operator.GetAsync("api/v1/configuration/connections");
             var written          = await @operator.PostAsync("api/v1/configuration/connections",

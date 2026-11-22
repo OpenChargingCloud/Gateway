@@ -31,7 +31,7 @@ namespace cloud.charging.open.Gateway
 
     /// <summary>
     /// The JSON API the browser talks to, registered at "/api": what every
-    /// node has - see <see cref="NodeHTTPAPI"/> - what every node that dials a
+    /// node has - see <see cref="NodeHTTPAPI"/> - what every node that connects to a
     /// CSMS and serves the stations below it has - see
     /// <see cref="OCPPServingHTTPAPI"/> - and, once there is any, what only a
     /// gateway has.
@@ -43,7 +43,7 @@ namespace cloud.charging.open.Gateway
     /// controller's; this class used to have its own copy of all of them. The
     /// connections, what they prove themselves with, the SSH keys, the state
     /// of each connection and the test of one are those of every node that
-    /// dials, at the same routes as on a charging station and a local
+    /// connects, at the same routes as on a charging station and a local
     /// controller, under the resource "connections"; the station server, the
     /// stations that may sign in to it, the certificates it presents and the
     /// chains it accepts at the routes of a local controller, under "stations"

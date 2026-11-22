@@ -37,14 +37,14 @@ namespace cloud.charging.open.Gateway.Tests
 {
 
     /// <summary>
-    /// A gateway dials its CSMS as a charging station and a local controller
-    /// dial theirs: over the connections written down in its store, with the
+    /// A gateway connects to its CSMS as a charging station and a local controller
+    /// connect to theirs: over the connections written down in its store, with the
     /// credentials they name, at its start and from the moment one is written
     /// down while it runs - and hangs up when it stops.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// How a connection is dialled, believed and dialled again is
+    /// How a connection is connected, believed and connected again is
     /// WWCPNode's, and tested in WWCP_OCPP_Node and by the station and
     /// the controller. What is tested here is that a gateway is such a node:
     /// that its store, its OCPP node and its start and stop are wired to it.
@@ -52,12 +52,12 @@ namespace cloud.charging.open.Gateway.Tests
     /// <para>
     /// A plain WebSocket server stands in for the CSMS. It speaks no OCPP and
     /// does not need to: what is measured is whether the gateway got in, and
-    /// with what - as the station's DiallingTests measure it. It asks for
+    /// with what - as the station's ConnectingTests measure it. It asks for
     /// credentials unless told not to, and knows the one login it is given.
     /// </para>
     /// </remarks>
     [TestFixture]
-    public class GatewayDiallingTests
+    public class GatewayConnectingTests
     {
 
         #region Data
@@ -84,7 +84,7 @@ namespace cloud.charging.open.Gateway.Tests
         public void MakeADirectory()
         {
 
-            directory = Path.Combine(Path.GetTempPath(), "gateway-dialling-" + Guid.NewGuid().ToString("N")[..12]);
+            directory = Path.Combine(Path.GetTempPath(), "gateway-connecting-" + Guid.NewGuid().ToString("N")[..12]);
 
             Directory.CreateDirectory(directory);
 
@@ -130,7 +130,7 @@ namespace cloud.charging.open.Gateway.Tests
             File.WriteAllText(file, Configuration);
 
             gateway  = new Gateway(
-                           HTTPPort:        IPPort.Parse(TestPorts.Free()),
+                           HTTPPort:        TestPorts.Free(),
                            AccountsPath:    Path.Combine(directory, "accounts"),
                            ConfigFile:      new WWCPConfigFile(file),
                            LogToConsole:    false,
@@ -154,7 +154,7 @@ namespace cloud.charging.open.Gateway.Tests
         {
 
             csms = new WebSocketServer(
-                       HTTPPort:   IPPort.Parse(TestPorts.Free()),
+                       HTTPPort:   TestPorts.Free(),
                        AutoStart:  true
                    );
 
@@ -169,12 +169,12 @@ namespace cloud.charging.open.Gateway.Tests
         #region (helper) WriteDownTheCSMS(Gateway, CSMS, Login, Password)
 
         /// <summary>
-        /// The CSMS as a connection of the gateway that dials by itself, with
+        /// The CSMS as a connection of the gateway that connects by itself, with
         /// a password - written down as the Connections page writes it.
         /// </summary>
         private static String WriteDownTheCSMS(Gateway          Gateway,
                                                WebSocketServer  CSMS,
-                                               String           Login,
+                                               User_Id          Login,
                                                String           Password)
         {
 
@@ -247,7 +247,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(named.Node.Id.ToString(),           Is.EqualTo("gw042"));
                 Assert.That(named.Node.SerialNumber,            Is.EqualTo("4711"));
                 Assert.That(named.ConfigurationJSON()["ocpp"]?["id"]?.ToString(),  Is.EqualTo("gw042"),
-                            "the Configuration page shows another name than the one the gateway dials under");
+                            "the Configuration page shows another name than the one the gateway connects under");
             });
 
         }
@@ -257,7 +257,7 @@ namespace cloud.charging.open.Gateway.Tests
         #region WhatTheSharedConnectionsSay_SpeaksOfAGateway()
 
         /// <summary>
-        /// A text the gateway shares with every node that dials - a refusal of
+        /// A text the gateway shares with every node that connects - a refusal of
         /// what was typed for a connection, written where there is no node to
         /// ask - says "this gateway", and not "this node".
         /// </summary>
@@ -271,7 +271,7 @@ namespace cloud.charging.open.Gateway.Tests
                         Is.False);
 
             Assert.Multiple(() => {
-                Assert.That(error, Is.EqualTo("'ftp' is not something this gateway dials. OCPP goes over ws, wss or ssh."));
+                Assert.That(error, Is.EqualTo("'ftp' is not something this gateway connects over. OCPP goes over ws, wss or ssh."));
                 Assert.That(error, Does.Not.Contain("this node"));
             });
 
@@ -301,28 +301,28 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
-        #region ItDialsItsCSMSWithThePasswordItsConnectionNames()
+        #region ItConnectsToItsCSMSWithThePasswordItsConnectionNames()
 
         /// <summary>
-        /// Written down before the start, dialled at the start: the gateway
+        /// Written down before the start, connected at the start: the gateway
         /// says it is connected, and the CSMS has it.
         /// </summary>
         [Test]
-        public async Task ItDialsItsCSMSWithThePasswordItsConnectionNames()
+        public async Task ItConnectsToItsCSMSWithThePasswordItsConnectionNames()
         {
 
             var backEnd     = ACSMSThatKnows("gw001", ThePassword);
 
             await TestPorts.StartedOnFreshPorts(() => GatewayFrom());
 
-            var connection  = WriteDownTheCSMS(gateway!, backEnd, "gw001", ThePassword);
+            var connection  = WriteDownTheCSMS(gateway!, backEnd, User_Id.Parse("gw001"), ThePassword);
 
-            // Written down after the start in this test, and so dialled by
+            // Written down after the start in this test, and so connected by
             // what follows the store - a gateway started with the connection
-            // in its store dials it in OnStarted, which the next test sees.
-            Assert.That(await Until(() => gateway!.DialledConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
+            // in its store connects it in OnStarted, which the next test sees.
+            Assert.That(await Until(() => gateway!.OutboundConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
                         Is.True,
-                        gateway!.DialledConnections.GetValueOrDefault(connection) ?? "never dialled");
+                        gateway!.OutboundConnections.GetValueOrDefault(connection) ?? "never connected");
 
             Assert.That(await Until(() => backEnd.WebSocketConnections.Any()), Is.True,
                         "the gateway says it is connected, and the CSMS has nobody");
@@ -331,14 +331,14 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
-        #region AConnectionWrittenDownBeforeTheStartIsDialledAtTheStart()
+        #region AConnectionWrittenDownBeforeTheStartIsConnectedAtTheStart()
 
         /// <summary>
-        /// What a gateway that is started again finds in its store is dialled
+        /// What a gateway that is started again finds in its store is connected
         /// at the start, by itself.
         /// </summary>
         [Test]
-        public async Task AConnectionWrittenDownBeforeTheStartIsDialledAtTheStart()
+        public async Task AConnectionWrittenDownBeforeTheStartIsConnectedAtTheStart()
         {
 
             var backEnd     = ACSMSThatKnows("gw001", ThePassword);
@@ -346,7 +346,7 @@ namespace cloud.charging.open.Gateway.Tests
             // Written down by a gateway that was never started, and read by the
             // next one from the same directory.
             var first       = GatewayFrom();
-            var connection  = WriteDownTheCSMS(first, backEnd, "gw001", ThePassword);
+            var connection  = WriteDownTheCSMS(first, backEnd, User_Id.Parse("gw001"), ThePassword);
             await first.DisposeAsync();
             gateway = null;
 
@@ -355,9 +355,9 @@ namespace cloud.charging.open.Gateway.Tests
             Assert.That(gateway!.Connections.Connections.Select(entry => entry.Id), Does.Contain(connection),
                         "the store was not read again");
 
-            Assert.That(await Until(() => gateway!.DialledConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
+            Assert.That(await Until(() => gateway!.OutboundConnections.GetValueOrDefault(connection)?.Contains("Connected") == true),
                         Is.True,
-                        gateway!.DialledConnections.GetValueOrDefault(connection) ?? "never dialled");
+                        gateway!.OutboundConnections.GetValueOrDefault(connection) ?? "never connected");
 
         }
 
@@ -377,16 +377,16 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(() => GatewayFrom());
 
-            var connection  = WriteDownTheCSMS(gateway!, backEnd, "gw001", ThePassword);
+            var connection  = WriteDownTheCSMS(gateway!, backEnd, User_Id.Parse("gw001"), ThePassword);
 
             // Refused, and not tried again: a password that is wrong does not
             // become right by being said again.
             Assert.That(await Until(() => gateway!.ConnectionStates.GetValueOrDefault(connection)?.Status == ConnectionStatus.Refused),
                         Is.True,
-                        gateway!.DialledConnections.GetValueOrDefault(connection) ?? "never dialled");
+                        gateway!.OutboundConnections.GetValueOrDefault(connection) ?? "never connected");
 
             Assert.Multiple(() => {
-                Assert.That(gateway!.DialledConnections[connection], Does.Not.Contain("Connected"));
+                Assert.That(gateway!.OutboundConnections[connection], Does.Not.Contain("Connected"));
                 Assert.That(backEnd.WebSocketConnections,            Is.Empty, "a gateway with the wrong password was let in");
             });
 
@@ -407,7 +407,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             await TestPorts.StartedOnFreshPorts(() => GatewayFrom());
 
-            WriteDownTheCSMS(gateway!, backEnd, "gw001", ThePassword);
+            WriteDownTheCSMS(gateway!, backEnd, User_Id.Parse("gw001"), ThePassword);
 
             Assert.That(await Until(() => backEnd.WebSocketConnections.Any()), Is.True, "the CSMS never had the gateway");
 

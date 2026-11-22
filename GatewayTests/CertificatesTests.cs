@@ -69,7 +69,7 @@ namespace cloud.charging.open.Gateway.Tests
             File.WriteAllText(file, """{ "nts": { "groups": { "legal": { "enabled": false } } } }""");
 
             gateway    = await TestPorts.StartedOnFreshPorts(() => new Gateway(
-                             HTTPPort:          IPPort.Parse(TestPorts.Free()),
+                             HTTPPort:          TestPorts.Free(),
                              AccountsPath:      Path.Combine(directory, "accounts"),
                              ConfigFile:        new WWCPConfigFile(file),
                              CertificatesPath:  Path.Combine(directory, "certificates"),

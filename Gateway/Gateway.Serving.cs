@@ -31,13 +31,13 @@ namespace cloud.charging.open.Gateway
     /// <summary>
     /// What a gateway says of itself to the station server it shares with a
     /// local controller: where it listens when nothing says otherwise, and
-    /// which names a CSMS that dials it may not come under.
+    /// which names a CSMS that connects to it may not come under.
     /// </summary>
     /// <remarks>
     /// Everything else is OCPPServingNode's: the section "webSocketServer" and what
     /// it may say, the charging stations that may sign in and their login
     /// groups, the chains a station's certificate may lead to, the keys and
-    /// certificates the port presents, OCPP over SSH, and a CSMS that dials the
+    /// certificates the port presents, OCPP-over-SSH, and a CSMS that connects to the
     /// gateway on the same port as a connection the other end makes - which a
     /// gateway lets in whenever one is written down, having no switch of its
     /// own for reporting to a CSMS at all.

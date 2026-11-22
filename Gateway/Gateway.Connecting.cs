@@ -37,8 +37,8 @@ namespace cloud.charging.open.Gateway
 {
 
     /// <summary>
-    /// What a gateway says of itself to the dialling it shares with every node
-    /// that dials a CSMS: that it is a gateway, that it speaks OCPP 2.1 and no
+    /// What a gateway says of itself to the connecting it shares with every node
+    /// that connects to a CSMS: that it is a gateway, that it speaks OCPP 2.1 and no
     /// OCPP 1.6, and where its connections and its SSH key are kept.
     /// </summary>
     /// <remarks>
@@ -47,14 +47,14 @@ namespace cloud.charging.open.Gateway
     /// and a local controller's: the connections and what they prove
     /// themselves with, the identities of the certificate store they show,
     /// how a server is believed - by its CA or by its key pins - and how a
-    /// connection is dialled, followed, let go of and dialled again, the next
+    /// connection is connected, followed, let go of and connected again, the next
     /// endpoint of a peer where one cannot be reached.
     /// </para>
     /// <para>
     /// What a gateway does not say yet, and a local controller does: a
     /// networking mode, pings and timeouts of its own, and the device model a
     /// CSMS reads and writes the TLS and SSH clients of its lines through.
-    /// Until then a line is opened as OCPPDialling opens one.
+    /// Until then a line is opened as OCPPConnecting opens one.
     /// </para>
     /// </remarks>
     public partial class Gateway
@@ -95,7 +95,7 @@ namespace cloud.charging.open.Gateway
         #region Node16 / Node21
 
         /// <summary>
-        /// A gateway speaks no OCPP 1.6 to the CSMS it dials.
+        /// A gateway speaks no OCPP 1.6 to the CSMS it connects to.
         /// </summary>
         protected override OCPPv1_6.NetworkingNode.AOCPPNetworkingNode? Node16
             => null;
@@ -112,7 +112,7 @@ namespace cloud.charging.open.Gateway
         #region (private) BuildConnectionStores()
 
         /// <summary>
-        /// The stores of what this gateway dials - the connections and their
+        /// The stores of what this gateway connects to - the connections and their
         /// credentials, the key it signs in with over SSH - beside the
         /// configuration file, and how it believes the servers of its
         /// connections by their key pins.
@@ -133,7 +133,7 @@ namespace cloud.charging.open.Gateway
                           );
 
             keyPinning       = NewKeyPinning();
-            OCPPDialling.MakeTLSClientSource();
+            OCPPConnecting.MakeTLSClientSource();
 
             // Which identities exist is the certificate store's business and
             // changes while this one is alive, so it is asked rather than told
@@ -141,7 +141,7 @@ namespace cloud.charging.open.Gateway
             Connections.KnownCertificateIds   = () => Certificates.ByKind(CertificateKind.TLSIdentity).Select(entry => entry.Id);
             Connections.OnNotice             += (level, message) => Log.Log(level, message, "ocpp", "connections");
 
-            // What is written down is what is dialled, from the moment it is
+            // What is written down is what is connected, from the moment it is
             // written - once this gateway has started; see WWCPNode.Peers.cs.
             Connections.OnConnectionsChanged += () => _ = ApplyConnectionChanges();
 
@@ -173,7 +173,7 @@ namespace cloud.charging.open.Gateway
         /// on a port nobody chose would be a door into the same process that the
         /// sign-in in front of this one does not guard.
         ///
-        /// Nothing is dialled here. Building the node and dialling a CSMS are two
+        /// Nothing is connected here. Building the node and connecting to a CSMS are two
         /// different things, and the second one is not something a constructor
         /// should do on the way past: Start() does.
         /// </remarks>

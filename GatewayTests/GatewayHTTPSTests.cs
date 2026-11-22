@@ -145,7 +145,7 @@ namespace cloud.charging.open.Gateway.Tests
                                             ? """{ "nts": { "groups": { "legal": { "enabled": false } } } }"""
                                             : $$"""{ "nts": { "groups": { "legal": { "enabled": false } } }, "web": {{Web}} }""");
 
-                var made  = new Gateway(HTTPPort:          IPPort.Parse(TestPorts.Free()),
+                var made  = new Gateway(HTTPPort:          TestPorts.Free(),
                                         AccountsPath:      Path.Combine(home, "accounts"),
                                         ConfigFile:        new WWCPConfigFile(file),
                                         CertificatesPath:  Path.Combine(home, "certificates"),
@@ -234,7 +234,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             using var page          = await http.GetAsync("");
             using var signIn        = await http.PostAsync("ext/login", new FormUrlEncodedContent([
-                                                                            new KeyValuePair<String, String>("login",     WWCPNode.DefaultAdminUser),
+                                                                            new KeyValuePair<String, String>("login",     WWCPNode.DefaultAdminUser.ToString()),
                                                                             new KeyValuePair<String, String>("password",  gateway.GeneratedPassword!)
                                                                         ]));
             using var status        = await http.GetAsync("api/v1/status");
@@ -291,8 +291,8 @@ namespace cloud.charging.open.Gateway.Tests
             for (var guess = 1; guess <= 10; guess++)
                 using (await SignIn(gateway, "nobody", $"Not-The-Password-{guess}", ("X-Forwarded-For", "192.0.2.7"), ("X-Forwarded-Proto", "https"))) { }
 
-            using var guesser = await SignIn(gateway, WWCPNode.DefaultAdminUser, gateway.GeneratedPassword!, ("X-Forwarded-For", "192.0.2.7"),    ("X-Forwarded-Proto", "https"));
-            using var other   = await SignIn(gateway, WWCPNode.DefaultAdminUser, gateway.GeneratedPassword!, ("X-Forwarded-For", "198.51.100.4"), ("X-Forwarded-Proto", "https"));
+            using var guesser = await SignIn(gateway, WWCPNode.DefaultAdminUser.ToString(), gateway.GeneratedPassword!, ("X-Forwarded-For", "192.0.2.7"),    ("X-Forwarded-Proto", "https"));
+            using var other   = await SignIn(gateway, WWCPNode.DefaultAdminUser.ToString(), gateway.GeneratedPassword!, ("X-Forwarded-For", "198.51.100.4"), ("X-Forwarded-Proto", "https"));
 
             var session       = other.Headers.TryGetValues("Set-Cookie", out var cookies)
                                     ? cookies.FirstOrDefault(cookie => cookie.StartsWith($"{gateway.ExtAPI.SessionCookieName}=", StringComparison.Ordinal))

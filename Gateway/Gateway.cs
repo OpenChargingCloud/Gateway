@@ -53,22 +53,22 @@ namespace cloud.charging.open.Gateway
     /// Events stream; nothing is rendered on the server.
     ///
     /// A gateway is an OCPP node as a charging station and a local controller
-    /// are: it dials its CSMS - one or several - over the connections written
+    /// are: it connects to its CSMS - one or several - over the connections written
     /// down on its Connections page, with the credentials and client
-    /// identities they name, and follows, believes, lets go of and dials them
+    /// identities they name, and follows, believes, lets go of and connects to them
     /// again as they do, because that is WWCPNode's and the same for
-    /// all three (see Gateway.Dialling.cs). Below that is what every program
+    /// all three (see Gateway.Connecting.cs). Below that is what every program
     /// of this family has - the sign-in, the name servers, the time servers,
     /// the certificates and the log, and the JSON API that serves them - which
     /// is the WWCP node.
     ///
-    /// And it is dialled, as a local controller is: by the charging stations
+    /// And it is connected to, as a local controller is: by the charging stations
     /// and local controllers below it, on its station server - its section
     /// "webSocketServer", the stations that may sign in and their login groups, the
     /// chains a station's certificate may lead to and the keys and
     /// certificates it presents, the same as a local controller's because they
     /// are OCPPServingNode's (see Gateway.Serving.cs) - and by a CSMS it
-    /// cannot dial, on the same port, as a connection the other end makes.
+    /// cannot connect to, on the same port, as a connection the other end makes.
     ///
     /// Not here yet: what a gateway is for, handing messages on from one side
     /// to the other.
@@ -135,7 +135,7 @@ namespace cloud.charging.open.Gateway
         /// --import-certificate tlsServerIdentity=&lt;file&gt; puts it in at the
         /// same start that asks for it.
         ///
-        /// The issuing CAs because a CSMS that dials this gateway may sign in
+        /// The issuing CAs because a CSMS that connects to this gateway may sign in
         /// with a certificate of a CA below a root and show it alone: the CAs
         /// between are kept here to build its chain with, and are believed
         /// nothing by themselves - see WWCPNode.Accepting.
@@ -185,7 +185,7 @@ namespace cloud.charging.open.Gateway
         /// <param name="SSH">What the program says about serving the command line over SSH; nothing by default - see SSHSettings.</param>
         /// <param name="Web">What the program says of HTTPS and of the reverse proxies in front - --https, --https-cert, --redirect-port and --trusted-proxy - over the "web" section of the configuration file; nothing by default, and then the file alone says it.</param>
         /// <param name="OCPP">Who this gateway says it is when it speaks OCPP, where the "ocpp" section of the configuration file says nothing; see <see cref="OCPPConfiguration"/>.</param>
-        public Gateway(IIPAddress?            HTTPHostname       = null,
+        public Gateway(IPAddress?            HTTPHostname       = null,
                        IPPort?                HTTPPort           = null,
                        HTTPServer?            HTTPServer         = null,
                        HTTPPath?              BasePath           = null,
@@ -231,7 +231,7 @@ namespace cloud.charging.open.Gateway
                    // station.
                    CertificateUsages:  [ OCPPCertificateUsage ],
 
-                   // Who the gateway is to a CSMS it dials may be made here: a
+                   // Who the gateway is to a CSMS it connects to may be made here: a
                    // key, a signing request, and the certificate that comes
                    // back for it. The key never leaves. And who its own web
                    // interface is, as a charging station and a local
@@ -269,10 +269,10 @@ namespace cloud.charging.open.Gateway
 
             #endregion
 
-            #region What it dials, and the OCPP node it dials with
+            #region What it connects to, and the OCPP node it connects with
 
             // Before anything asks for them: the HTTP API below reads the
-            // connections. Nothing is dialled yet: Start() does.
+            // connections. Nothing is connected yet: Start() does.
             BuildConnectionStores();
 
             gw01 = BuildOCPPNode(this.OCPP);
@@ -291,7 +291,7 @@ namespace cloud.charging.open.Gateway
             // shadow the properties of the same name, and the "Log" parameter is
             // null whenever the caller did not bring an event log of its own.
             this.Log.Info($"OCPP 2.1 gateway '{gw01.Id}' is set up as {gw01.VendorName} {gw01.Model}; " +
-                          $"{Connections.Connections.Count(connection => connection.AutoConnect)} of its {Connections.Connections.Count} connections are dialled by themselves.",
+                          $"{Connections.Connections.Count(connection => connection.AutoConnect)} of its {Connections.Connections.Count} connections are connected by themselves.",
                           "ocpp");
 
             #endregion
@@ -361,8 +361,8 @@ namespace cloud.charging.open.Gateway
         /// </summary>
         /// <remarks>
         /// After the web interface, so that a gateway whose CSMS is unreachable
-        /// is still a gateway whoever is watching the Logs page sees dialling
-        /// out - and the page where the address that was wrong is put right. A
+        /// is still a gateway whoever is watching the Logs page sees connecting
+        /// - and the page where the address that was wrong is put right. A
         /// CSMS that does not answer is logged and shown, not fatal.
         /// </remarks>
         protected override async Task OnStarted()
@@ -370,7 +370,7 @@ namespace cloud.charging.open.Gateway
 
             Log.Info($"The JSON API is at {APIURL}v1/status", "web", "http");
 
-            await DialConfiguredConnections();
+            await ConnectConfiguredConnections();
 
         }
 
@@ -400,7 +400,7 @@ namespace cloud.charging.open.Gateway
         #region (protected override) OnStopping()
 
         /// <summary>
-        /// Hang up what this gateway dialled, and then close the port of the
+        /// Hang up what this gateway connected to, and then close the port of the
         /// stations below it - a station still connected has somewhere for its
         /// last messages to go while the CSMS is let go of.
         /// </summary>

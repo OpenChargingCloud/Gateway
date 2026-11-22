@@ -46,7 +46,7 @@ namespace cloud.charging.open.Gateway.Tests
     /// <summary>
     /// The port the charging stations below a gateway connect to, as the CSMS sees it:
     /// OCPPServerController of the gateway's own Device Model, read and written over the line the
-    /// gateway dials up to its CSMS, as the page "Charging stations" reads and writes it; the
+    /// gateway connects up to its CSMS, as the page "Charging stations" reads and writes it; the
     /// stations that may sign in there and their login groups, StationLoginController and
     /// StationLoginGroupController - and what a station on that port cannot do: ask the gateway
     /// what only the CSMS asks, or send another station a request.
@@ -61,7 +61,7 @@ namespace cloud.charging.open.Gateway.Tests
     /// </para>
     /// <para>
     /// The gateway 'gw003' listens for stations on 127.0.0.1 with security profile 1 alone and has no
-    /// server certificate, and dials a stand-in CSMS that speaks just enough OCPP to ask and to be
+    /// server certificate, and connects to a stand-in CSMS that speaks just enough OCPP to ask and to be
     /// answered. What a CSMS may set is everything the page may set (Achim, 2026-11-17).
     /// </para>
     /// </remarks>
@@ -78,7 +78,7 @@ namespace cloud.charging.open.Gateway.Tests
         private String   directory  = "";
         private CSMS     csms       = default!;
         private Gateway  gateway    = default!;
-        private UInt16   port;
+        private IPPort   port;
         private Int32    lastId;
 
         #endregion
@@ -106,14 +106,14 @@ namespace cloud.charging.open.Gateway.Tests
                                                         new JProperty("webSocketServer",  new JObject(
                                                             new JProperty("enabled",           true),
                                                             new JProperty("address",           "127.0.0.1"),
-                                                            new JProperty("port",              port),
+                                                            new JProperty("port",              port.ToUInt16()),
                                                             new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS")),
                                                             new JProperty("subprotocols",      new JArray("ocpp2.1"))
                                                         ))
                                                     ).ToString());
 
                             return new Gateway(
-                                       HTTPPort:        IPPort.Parse(TestPorts.Free()),
+                                       HTTPPort:        TestPorts.Free(),
                                        AccountsPath:    Path.Combine(directory, "accounts"),
                                        ConfigFile:      new WWCPConfigFile(file),
                                        LogToConsole:    false,
@@ -122,7 +122,7 @@ namespace cloud.charging.open.Gateway.Tests
 
                         });
 
-            Assert.That(gateway.Connections.TryAddPasswordAuthentication("gw003", ThePassword, I18NString.Create("The CSMS's password"),
+            Assert.That(gateway.Connections.TryAddPasswordAuthentication(User_Id.Parse("gw003"), ThePassword, I18NString.Create("The CSMS's password"),
                                                                   out var login, out var error),
                         Is.True, error);
 
@@ -188,11 +188,11 @@ namespace cloud.charging.open.Gateway.Tests
             /// </summary>
             public ConcurrentQueue<JArray> Asked { get; } = new();
 
-            public CSMS(UInt16 Port, String Login, String Password)
+            public CSMS(IPPort Port, String Login, String Password)
             {
 
                 Server = new WebSocketServer(
-                             HTTPPort:               IPPort.Parse(Port),
+                             HTTPPort:               Port,
                              SecWebSocketProtocols:  [ "ocpp2.1" ],
                              DisableWebSocketPings:  true,
                              AutoStart:              true
@@ -396,14 +396,14 @@ namespace cloud.charging.open.Gateway.Tests
         /// <summary>
         /// Whether something listens on the given TCP port of 127.0.0.1.
         /// </summary>
-        private static async Task<Boolean> Listens(UInt16 Port)
+        private static async Task<Boolean> Listens(IPPort Port)
         {
 
             using var client = new TcpClient();
 
             try
             {
-                await client.ConnectAsync("127.0.0.1", Port).WaitAsync(TimeSpan.FromSeconds(5));
+                await client.ConnectAsync("127.0.0.1", Port.ToInt32()).WaitAsync(TimeSpan.FromSeconds(5));
                 return true;
             }
             catch
@@ -457,7 +457,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// <summary>
         /// A station on the station port over ws://, signed in with its password.
         /// </summary>
-        private async Task<ClientWebSocket> AStation(String Id)
+        private async Task<ClientWebSocket> AStation(User_Id Id)
         {
 
             Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication(Id, ThePassword, null, null, out var error), Is.True, error);
@@ -696,7 +696,7 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(set["Port"].Status,                  Is.EqualTo("RebootRequired"), set["Port"].Info);
                 Assert.That(read["Port"].Value,                  Is.EqualTo(newPort.ToString()));
                 Assert.That(read["WaitingForARestart"].Value,    Is.EqualTo("Port"));
-                Assert.That(InTheFile["port"]?.Value<Int32>(),   Is.EqualTo(newPort));
+                Assert.That(InTheFile["port"]?.Value<Int32>(),   Is.EqualTo(newPort.ToInt32()));
                 Assert.That(listens,                             Is.True, "the port stopped listening before a restart");
             });
 
@@ -763,7 +763,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task AStation_CannotSetTheStationPort()
         {
 
-            using var cs001  = await AStation("cs001");
+            using var cs001  = await AStation(User_Id.Parse("cs001"));
 
             var asCSMS       = Frame(gateway.Node.Id.ToString(), "CSMS",  "SetVariables", SetVariablesOf(("SecurityProfiles", "1,2")));
             var asItself     = Frame(gateway.Node.Id.ToString(), "cs001", "SetVariables", SetVariablesOf(("SecurityProfiles", "1,2")));
@@ -794,8 +794,8 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task AStation_CannotSendAnotherStationARequest()
         {
 
-            using var cs002  = await AStation("cs002");
-            using var cs001  = await AStation("cs001");
+            using var cs002  = await AStation(User_Id.Parse("cs002"));
+            using var cs001  = await AStation(User_Id.Parse("cs001"));
 
             var reset        = new JObject(new JProperty("type", "Immediate"));
             var asCSMS       = Frame("cs002", "CSMS",  "Reset", reset);
@@ -879,7 +879,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task TheCSMSReadsAStationAndItsGroup_ButNoSecret()
         {
 
-            Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication("cs001", ThePassword, null, null, out var error), Is.True, error);
+            Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse("cs001"), ThePassword, null, null, out var error), Is.True, error);
 
             var read = await GetOf(("StationLoginController",      "cs001",   "Group"),
                                    ("StationLoginController",      "cs001",   "HasPassword"),
@@ -907,7 +907,7 @@ namespace cloud.charging.open.Gateway.Tests
         public async Task AStation_CannotListAnother()
         {
 
-            using var cs001 = await AStation("cs001");
+            using var cs001 = await AStation(User_Id.Parse("cs001"));
 
             const String password = "cs009-password-long-enough";
 

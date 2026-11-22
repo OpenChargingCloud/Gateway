@@ -33,7 +33,7 @@ namespace cloud.charging.open.Gateway
     /// <remarks>
     /// <para>
     /// The gateway's own resources, as on its web page and at its command
-    /// line: what signs for the connections it dials needs "connections:edit",
+    /// line: what signs for the connections it makes needs "connections:edit",
     /// what signs for its certificates "certificates:edit". A signer holds a
     /// role of this gateway, and what that role may do here is all it may sign
     /// here.
@@ -78,7 +78,7 @@ namespace cloud.charging.open.Gateway
                    ActionPermission.Needs  ("DeleteCertificate",     Edit(NodeResources.Certificates)),
                    ActionPermission.Needs  ("CertificateSigned",     Edit(NodeResources.Certificates)),
 
-                   // The connections it dials: where they go and what it proves itself with.
+                   // The connections it makes: where they go and what it proves itself with.
                    ActionPermission.Needs  ("SetNetworkProfile",     Edit(GatewayAccess.Connections)),
 
                    ActionPermission.Needs  ("GetLog",                Read(NodeResources.Log)),
@@ -89,7 +89,7 @@ namespace cloud.charging.open.Gateway
                    ActionPermission.Needs  ("PublishFirmware",       Edit(NodeResources.Firmware)),
 
                    // The SSH keys of the charging stations, kept with their logins
-                   // (white paper "OCPP over SSH", section 9.3, decision 7): what the
+                   // (white paper "OCPP-over-SSH", section 9.3, decision 7): what the
                    // page and the command line change with "stations:edit".
                    ActionPermission.Needs  ("InstallSSHKey",         Edit(GatewayAccess.Stations)),
                    ActionPermission.Needs  ("DeleteSSHKey",          Edit(GatewayAccess.Stations)),

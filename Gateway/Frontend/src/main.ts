@@ -20,15 +20,15 @@ import { setNodeNoun, setNodeTraits } from '@ocpp/settings';
 
 import { configurationPage } from './pages/configuration';
 
-// What a gateway dials are connections, drawn by the pages a charging station
+// What a gateway connects to are connections, drawn by the pages a charging station
 // and a local controller draw theirs with: where each goes, what it signs in
 // with - on a tab of the same page - and how it knows its server. Whoever may
 // read or change "connections" may read or change them, as on a station. The
 // pages speak of a gateway, which is one OCPP node whatever version it speaks,
-// and is dialled itself, by the charging stations and local controllers below
-// it - and by a CSMS it cannot dial - on its station server.
+// and is itself connected to, by the charging stations and local controllers below
+// it - and by a CSMS it cannot connect to - on its station server.
 setNodeNoun('gateway');
-setNodeTraits({ oneNodePerOCPPVersion: false, isDialled: true });
+setNodeTraits({ oneNodePerOCPPVersion: false, isConnectedTo: true });
 
 // What a gateway has pages for beside what every node has: its connections,
 // and the server the stations below it connect to - with the stations that
@@ -48,7 +48,7 @@ startNode({
             nodeMenu.dns,
             nodeMenu.nts,
             nodeMenu.ssh,
-            // Where the gateway dials, and on a tab of the same page what it
+            // Where the gateway connects, and on a tab of the same page what it
             // signs in with. The keys it holds up have no page: they are TLS
             // identities of the certificate store, made, waiting for their
             // certificate and kept on Client identities - where the SSH keys
@@ -87,7 +87,7 @@ startNode({
                 lead to is said under <a href="${toURL('/configuration/ocpp-server/trust')}">Accepted chains</a>.
             `,
             presents:  html`
-                A TLS identity, with its private key: what this gateway shows a CSMS it dials that asks who
+                A TLS identity, with its private key: what this gateway shows a CSMS it connects to that asks who
                 it is - the <a href="${toURL('/configuration/connections')}">Connections</a> page says which
                 one each connection shows. An identity is brought here with its key, or its key is
                 <a href="${toURL(`/configuration/client-identities?tab=${requestTabId}`)}">made on this gateway</a>
@@ -105,7 +105,7 @@ startNode({
         },
         // The station server's server keys: offered here before it has one.
         serverKeyListeners: [ 'ocpp' ],
-        // And who it is where it dials over ssh://: the keys it signs in
+        // And who it is where it connects over ssh://: the keys it signs in
         // with, which are no certificates and stand among what it presents
         // all the same.
         sections: context => [ sshKeysSection(context) ]
