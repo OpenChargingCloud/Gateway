@@ -134,8 +134,9 @@ namespace cloud.charging.open.Gateway.CommandLine
         /// </summary>
         private void RegisterStationCommands()
 
-            => RegisterCommands(new StationKeysCommand(this, GatewayAccess.Stations),
-                                new StationPinsCommand(this, GatewayAccess.Stations));
+            => RegisterCommands(new StationKeysCommand   (this, GatewayAccess.Stations),
+                                new StationPinsCommand   (this, GatewayAccess.Stations),
+                                new StationTargetsCommand(this, GatewayAccess.Stations));
 
         #endregion
 

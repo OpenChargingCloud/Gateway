@@ -450,6 +450,67 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region TargetsAndForwarding_AreAnAdministratorsToWrite_AndAnOperatorsToLookAt()
+
+        /// <summary>
+        /// The forwarding targets and the switch over the JSON API: an administrator makes a target of
+        /// a peer, forwards a station's login to it, and switches forwarding off - and an operator sees
+        /// it all and changes none of it.
+        /// </summary>
+        [Test]
+        public async Task TargetsAndForwarding_AreAnAdministratorsToWrite_AndAnOperatorsToLookAt()
+        {
+
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
+
+            Assert.That(gateway!.Connections.TryAddConnection(I18NString.Create("The CSMS"), URL.Parse("ws://127.0.0.1:1/gw001"), "CSMS", false, null, null,
+                                                              out var connectionId, out var error),
+                        Is.True, error);
+
+            var peer = gateway.Connections.PeerOf(connectionId!)!.Id;
+
+            Assert.That(gateway.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse("cs001"), "a-password-long-enough-for-ocpp", null, null, out error), Is.True, error);
+
+            using var admin      = await SignedInAs(User_Id.Parse("admin1"),    WWCPNode.AdminRole.ToString());
+            using var @operator  = await SignedInAs(User_Id.Parse("operator5"), "operator");
+
+            var made        = await admin.PostAsync("api/v1/configuration/ocpp-server/targets",
+                                                    new StringContent($$"""{ "id": "Site-1", "peers": [ "{{peer}}" ], "description": { "en": "Site 1" } }""", Encoding.UTF8, "application/json"));
+            var unknown     = await Put(admin,      "api/v1/configuration/ocpp-server/targets/site-2", """{ "peers": [ "no-such-peer" ] }""");
+            var named       = await Put(admin,      "api/v1/configuration/ocpp-server/logins/cs001",   """{ "target": "site-1" }""");
+            var notByOp     = await Put(@operator,  "api/v1/configuration/ocpp-server/logins/cs001",   """{ "target": null }""");
+            var inUse       = await admin.DeleteAsync("api/v1/configuration/ocpp-server/targets/site-1");
+            var switched    = await Put(admin,      "api/v1/configuration/forwarding",                 """{ "enabled": false }""");
+            var switchByOp  = await Put(@operator,  "api/v1/configuration/forwarding",                 """{ "enabled": true }""");
+
+            var logins      = JObject.Parse(await (await @operator.GetAsync("api/v1/configuration/ocpp-server/logins")).Content.ReadAsStringAsync());
+            var forwarding  = JObject.Parse(await (await @operator.GetAsync("api/v1/configuration/forwarding")).Content.ReadAsStringAsync());
+
+            Assert.Multiple(() => {
+
+                Assert.That(made.StatusCode,        Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(unknown.StatusCode,     Is.EqualTo(HttpStatusCode.BadRequest), "a target of a peer the gateway does not have");
+                Assert.That(named.StatusCode,       Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(notByOp.StatusCode,     Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(inUse.StatusCode,       Is.EqualTo(HttpStatusCode.Conflict), "a target a login names was removed");
+                Assert.That(switched.StatusCode,    Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(switchByOp.StatusCode,  Is.EqualTo(HttpStatusCode.Forbidden));
+
+                Assert.That(logins["targets"]?[0]?["id"]?.Value<String>(),       Is.EqualTo("site-1"));
+                Assert.That(logins["targets"]?[0]?["peers"]?[0]?.Value<String>(), Is.EqualTo(peer));
+                Assert.That(logins["targets"]?[0]?["logins"]?.Value<Int32>(),    Is.EqualTo(1));
+                Assert.That(logins["logins"]?.First(login => login["login"]?.Value<String>() == "cs001")["target"]?.Value<String>(), Is.EqualTo("site-1"));
+
+                Assert.That(forwarding["enabled"]?.Value<Boolean>(),    Is.False);
+                Assert.That(forwarding["byDefault"]?.Value<Boolean>(),  Is.True);
+                Assert.That(gateway.Forwards,                           Is.False);
+
+            });
+
+        }
+
+        #endregion
+
     }
 
 }

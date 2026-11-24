@@ -228,6 +228,7 @@ namespace cloud.charging.open.Gateway.Tests
             var help   = await cli.Execute("help");
             var keys   = await overSSH.Execute(StationKeysCommand.CommandName);
             var pins   = await overSSH.Execute(StationPinsCommand.CommandName);
+            var targets = await overSSH.Execute(StationTargetsCommand.CommandName);
 
             Assert.Multiple(() => {
 
@@ -235,6 +236,7 @@ namespace cloud.charging.open.Gateway.Tests
                 {
                     Assert.That(commands.Count(command => command is StationKeysCommand), Is.EqualTo(1), "stationKeys");
                     Assert.That(commands.Count(command => command is StationPinsCommand), Is.EqualTo(1), "stationPins");
+                    Assert.That(commands.Count(command => command is StationTargetsCommand), Is.EqualTo(1), "stationTargets");
                 }
 
                 Assert.That(help,   Has.Some.StartsWith("stationKeys [<station> [add <authorized_keys line> | remove <fingerprint>]]"));
@@ -243,6 +245,10 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(keys,   Has.Some.EqualTo("No charging station of this gateway has an SSH key."));
                 Assert.That(keys,   Has.Some.EqualTo("OCPP-over-SSH is switched off: no charging station signs in over SSH."));
                 Assert.That(pins,   Has.Some.EqualTo("No charging station of this gateway has a key pin."));
+
+                Assert.That(help,    Has.Some.StartsWith("stationTargets [set <target> <peer> [<peer> ...] | remove <target> | forward <station> <target>|none]"));
+                Assert.That(targets, Is.EqualTo(new[] { "This gateway forwards, as its kind does.",
+                                                        "No target: every charging station goes to the back end in charge of this gateway." }));
 
             });
 
@@ -324,6 +330,57 @@ namespace cloud.charging.open.Gateway.Tests
 
                 lock (said)
                     Assert.That(said,       Has.Some.EqualTo($"Somebody at the command line gave the charging station 'cs001' the key pin {pin}."));
+
+            });
+
+        }
+
+        #endregion
+
+        #region StationTargets_AreWrittenListedAndNamed_AtTheConsole()
+
+        /// <summary>
+        /// A target is made of a peer of the gateway, a station forwarded to it, and both listed with
+        /// whether the peer is connected; a target a station is forwarded to is not removed, and once the
+        /// station goes to the back end in charge again, it is.
+        /// </summary>
+        [Test]
+        public async Task StationTargets_AreWrittenListedAndNamed_AtTheConsole()
+        {
+
+            var gw         = AGateway();
+            using var cli  = new GatewayCLI(gw);
+
+            Assert.That(gw.Connections.TryAddConnection(I18NString.Create("CSMS two"), URL.Parse("ws://127.0.0.1:1/gw001"), "CSMS", false, null, null,
+                                                        out var connectionId, out var error),
+                        Is.True, error);
+
+            var peer        = gw.Connections.PeerOf(connectionId!)!.Id;
+
+            Assert.That(gw.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse("cs001"), "a-password-long-enough-for-ocpp", null, null, out error), Is.True, error);
+
+            var made        = await cli.Execute($"stationTargets set Site-1 {peer}");
+            var unknownPeer = await cli.Execute("stationTargets set site-2 no-such-peer");
+            var forwarded   = await cli.Execute("stationTargets forward cs001 site-1");
+            var listed      = await cli.Execute("stationTargets");
+            var notRemoved  = await cli.Execute("stationTargets remove site-1");
+            var givenBack   = await cli.Execute("stationTargets forward cs001 none");
+            var removed     = await cli.Execute("stationTargets remove site-1");
+
+            Assert.Multiple(() => {
+
+                Assert.That(made,        Is.EqualTo(new[] { $"The target 'site-1' is made, and tries {peer} 'CSMS two' (not connected)." }));
+                Assert.That(unknownPeer, Is.EqualTo(new[] { "The target was not written: This gateway has no peer called 'no-such-peer'." }));
+                Assert.That(forwarded,   Is.EqualTo(new[] { "What 'cs001' sends up goes to the target 'site-1' now." }));
+                Assert.That(listed,      Is.EqualTo(new[] { "This gateway forwards, as its kind does.",
+                                                            $"site-1: {peer} 'CSMS two' (not connected)  (cs001)" }));
+                Assert.That(notRemoved,  Is.EqualTo(new[] { "The target was not removed: The target 'site-1' is still named by 1 login(s). Give them another target first." }));
+                Assert.That(givenBack,   Is.EqualTo(new[] { "What 'cs001' sends up goes to the back end in charge of this gateway now." }));
+                Assert.That(removed,     Is.EqualTo(new[] { "The target 'site-1' is removed." }));
+                Assert.That(gw.WebSocketLogins.Targets, Is.Empty);
+
+                lock (said)
+                    Assert.That(said,    Has.Some.EqualTo("Somebody at the command line forwarded the charging station 'cs001' to the target 'site-1'."));
 
             });
 
