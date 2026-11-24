@@ -18,6 +18,7 @@
 #region Usings
 
 using System.Net;
+using System.Net.Quic;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -343,6 +344,52 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region (private static) ShownOverHTTP3(Port)
+
+        /// <summary>
+        /// The key pin of what the station port shows over HTTP/3, as the
+        /// HttpClient of .NET is shown it: a plain request, which a WebSocket
+        /// server answers with a refusal - the handshake of QUIC is what counts.
+        /// A new client each time, so that nothing of a connection before is
+        /// taken up again.
+        /// </summary>
+        private static async Task<KeyPin?> ShownOverHTTP3(IPPort Port)
+        {
+
+            KeyPin? shown = null;
+
+            using var handler  = new SocketsHttpHandler {
+                                     SslOptions = new SslClientAuthenticationOptions {
+                                         RemoteCertificateValidationCallback = (sender, certificate, chain, policyErrors) => {
+                                             if (certificate is X509Certificate2 serverCertificate)
+                                                 shown = KeyPin.FromCertificate(serverCertificate);
+                                             return true;
+                                         }
+                                     }
+                                 };
+
+            using var client   = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+
+            using var request  = new HttpRequestMessage(HttpMethod.Get, $"https://127.0.0.1:{Port}/") {
+                                     Version        = HttpVersion.Version30,
+                                     VersionPolicy  = HttpVersionPolicy.RequestVersionExact
+                                 };
+
+            try
+            {
+                using var response = await client.SendAsync(request);
+            }
+            catch (HttpRequestException)
+            {
+                // What the server answers does not matter: what it showed does.
+            }
+
+            return shown;
+
+        }
+
+        #endregion
+
         #region (helper) Door(Gateway, Name) / Until(Condition)
 
         private static String Door(Gateway  Gateway,
@@ -557,16 +604,20 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
-        #region ASwitch_StartsHTTP3AgainWithTheNewKey()
+        #region ASwitch_IsShownOverHTTP3_WithoutARestart()
 
         /// <summary>
-        /// HTTP/3 is handed its certificate once, when it starts: a switch to
-        /// the next server key starts it again, on the same UDP port, and says
-        /// so - while TCP goes on taking connections throughout.
+        /// HTTP/3 asks for the certificate at every new connection, as TCP
+        /// does at every handshake: after a switch to the next server key the
+        /// next client over HTTP/3 is shown the new key, on the same UDP port,
+        /// and HTTP/3 is not started again for it.
         /// </summary>
         [Test]
-        public async Task ASwitch_StartsHTTP3AgainWithTheNewKey()
+        public async Task ASwitch_IsShownOverHTTP3_WithoutARestart()
         {
+
+            if (!(OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) || !QuicConnection.IsSupported)
+                Assert.Ignore("QUIC is not supported here: .NET has no client of HTTP/3 on this machine.");
 
             var port    = APortFreeForBoth();
             var gateway = await AGatewayTakingHTTP3(port, WithAServerKey: true);
@@ -574,20 +625,24 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(await Until(() => server.HTTP3Port == port), Is.True, "The gateway takes no WebSockets over HTTP/3: " + server.WhyNoHTTP3);
 
+            var before = gateway.OCPPServerKeyPin;
+
+            Assert.That(await ShownOverHTTP3(port), Is.EqualTo(before), "what HTTP/3 shows before the switch");
+
             Assert.That(gateway.Certificates.TryCreateServerKey(Gateway.StationListener, null, AsNext: true, out var next, out var error), Is.True, error);
             Assert.That(gateway.Certificates.TrySwitchToNextKey(Gateway.StationListener, next!.KeyPin, out _, out error), Is.True, error);
 
-            Assert.That(await Until(() => gateway.Log.Recent(500).Any(entry => entry.Message.Contains("HTTP/3 of the charging station port was started again"))),
-                        Is.True, "HTTP/3 was not started again after the switch: " + server.WhyNoHTTP3);
+            using var overTCP  = await ShownOn(port);
+            var overHTTP3      = await ShownOverHTTP3(port);
 
             Assert.Multiple(() => {
-                Assert.That(server.HTTP3Port, Is.EqualTo(port), "HTTP/3 is not taken on its port after the switch: " + server.WhyNoHTTP3);
-                Assert.That(gateway.OCPPServerKeyPin,     Is.EqualTo(next.KeyPin));
+                Assert.That(overHTTP3,                              Is.EqualTo(next.KeyPin), "what HTTP/3 shows after the switch");
+                Assert.That(KeyPin.FromCertificate(overTCP),        Is.EqualTo(next.KeyPin), "what TCP shows after the switch");
+                Assert.That(server.HTTP3Port,                       Is.EqualTo(port),        "HTTP/3 is not taken on its port after the switch: " + server.WhyNoHTTP3);
+                Assert.That(gateway.Log.Recent(500).Select(entry => entry.Message),
+                            Has.None.Contains("HTTP/3 of the charging station port was started again"),
+                            "HTTP/3 was started again for the switch");
             });
-
-            using var overTCP = await ShownOn(port);
-
-            Assert.That(KeyPin.FromCertificate(overTCP), Is.EqualTo(next.KeyPin));
 
         }
 
