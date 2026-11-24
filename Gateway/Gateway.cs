@@ -280,7 +280,9 @@ namespace cloud.charging.open.Gateway
             // What only the CSMS asks - SetVariables, Reset and the like - over
             // the gateway's line up to it, and from no station; and what a
             // station sends on, up to the CSMS in its own name, and to no other
-            // station (OCPPServingNode.Gates.cs).
+            // station (OCPPServingNode.Gates.cs). Whatever the gates let pass
+            // and is not for the gateway itself is forwarded: AGatewayNode's
+            // default, as a local controller's.
             AttachRequestGate(gw01);
             AttachForwardingGate(gw01);
 

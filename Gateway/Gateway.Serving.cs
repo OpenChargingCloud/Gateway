@@ -30,8 +30,7 @@ namespace cloud.charging.open.Gateway
 
     /// <summary>
     /// What a gateway says of itself to the station server it shares with a
-    /// local controller: where it listens when nothing says otherwise, and
-    /// which names a CSMS that connects to it may not come under.
+    /// local controller: where it listens when nothing says otherwise.
     /// </summary>
     /// <remarks>
     /// Everything else is OCPPServingNode's: the section "webSocketServer" and what
