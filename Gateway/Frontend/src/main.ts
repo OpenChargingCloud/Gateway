@@ -12,6 +12,7 @@ import { nodeMenu, startNode } from '@node/start';
 
 import { sshKeysSection }         from '@ocpp/sshKeys';
 import { connectionsPage }        from '@ocpp/pages/connections';
+import { ocppLogMenuEntry, ocppLogPage } from '@ocpp/pages/ocppLog';
 import { ocppServerPage }         from '@ocpp/pages/ocppServer';
 import { stationLoginsPage }      from '@ocpp/pages/stationLogins';
 import { clientTrustPage }        from '@ocpp/pages/clientTrust';
@@ -67,6 +68,8 @@ startNode({
             { path: '/configuration/ocpp-server/trust',         label: 'Accepted chains',     icon: 'fa-user-shield',       permission: [ 'certificates:read' ] },
             { path: '/configuration/commissioning',             label: 'Commissioning',       icon: 'fa-screwdriver-wrench', permission: [ 'commissioning:read' ] }
         ]),
+        // Every OCPP message this node sent and received.
+        ocppLogMenuEntry,
         nodeMenu.logs
     ],
     // The certificate store says what every node says of it, in a gateway's
@@ -115,6 +118,8 @@ startNode({
     // say, for an account that may read only those, where the configuration's
     // own page had answered 403.
     pages: {
+
+        '/ocpp-log':                                ocppLogPage,
         '/configuration':                           configurationPage,
         '/configuration/connections':               connectionsPage,
         '/configuration/ocpp-server':               ocppServerPage,

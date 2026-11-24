@@ -11,3 +11,6 @@
 // identities are drawn by the pages of WWCP_OCPP_Node, as on a charging
 // station and a local controller, and look as they do there.
 @use '@ocpp/styles/connections';
+
+// Every OCPP message of this node, on its OCPP log page.
+@use '@ocpp/styles/ocppLog';
