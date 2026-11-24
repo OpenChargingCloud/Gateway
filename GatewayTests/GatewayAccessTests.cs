@@ -480,11 +480,16 @@ namespace cloud.charging.open.Gateway.Tests
             var named       = await Put(admin,      "api/v1/configuration/ocpp-server/logins/cs001",   """{ "target": "site-1" }""");
             var notByOp     = await Put(@operator,  "api/v1/configuration/ocpp-server/logins/cs001",   """{ "target": null }""");
             var inUse       = await admin.DeleteAsync("api/v1/configuration/ocpp-server/targets/site-1");
+            var counted     = JObject.Parse(await (await admin.GetAsync("api/v1/configuration/connections")).Content.ReadAsStringAsync());
             var switched    = await Put(admin,      "api/v1/configuration/forwarding",                 """{ "enabled": false }""");
             var switchByOp  = await Put(@operator,  "api/v1/configuration/forwarding",                 """{ "enabled": true }""");
 
             var logins      = JObject.Parse(await (await @operator.GetAsync("api/v1/configuration/ocpp-server/logins")).Content.ReadAsStringAsync());
             var forwarding  = JObject.Parse(await (await @operator.GetAsync("api/v1/configuration/forwarding")).Content.ReadAsStringAsync());
+            var notCounted  = JObject.Parse(await (await admin.GetAsync("api/v1/configuration/connections")).Content.ReadAsStringAsync());
+
+            JObject? stationsOf(JObject Connections)
+                => Connections["peers"]?.OfType<JObject>().FirstOrDefault(one => one["id"]?.Value<String>() == peer)?["stations"] as JObject;
 
             Assert.Multiple(() => {
 
@@ -504,6 +509,11 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(forwarding["enabled"]?.Value<Boolean>(),    Is.False);
                 Assert.That(forwarding["byDefault"]?.Value<Boolean>(),  Is.True);
                 Assert.That(gateway.Forwards,                           Is.False);
+
+                // The connections page says how many stations the peer gets, while forwarding is on.
+                Assert.That(stationsOf(counted)?["first"]?.Value<Int32>(),  Is.EqualTo(1), counted.ToString());
+                Assert.That(stationsOf(counted)?["now"]?.Value<Int32>(),    Is.EqualTo(0), "a peer not connected gets stations now");
+                Assert.That(stationsOf(notCounted),                         Is.Null, "switched off, the peer is still said to get stations");
 
             });
 

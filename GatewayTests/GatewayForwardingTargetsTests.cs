@@ -758,6 +758,59 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region TheStationsOfEachPeer_AreCounted_ByTheirTargets_AndWhereTheyGoNow()
+
+        /// <summary>
+        /// What the connections page says of each peer: how many stations name it first in their
+        /// target, how many after another, how many without one go to it as the back end in charge -
+        /// a login switched off not counted -, and how many go to it now; switched off, nothing.
+        /// </summary>
+        [Test]
+        public async Task TheStationsOfEachPeer_AreCounted_ByTheirTargets_AndWhereTheyGoNow()
+        {
+
+            await TheGateway();
+
+            var (csms1, id1) = await TheCSMSIsIn("csms-01");
+            await Task.Delay(20);
+            var (csms2, id2) = await TheCSMSIsIn("csms-02");
+
+            await using var first   = csms1;
+            await using var second  = csms2;
+
+            // Written down, never connected.
+            var away = WriteDownTheCSMS(User_Id.Parse("csms-03"));
+
+            foreach (var station in new[] { "cs001", "cs002", "cs003", "cs004", "cs005", "cs006" })
+                Assert.That(gateway!.WebSocketLogins.TrySetPasswordAuthentication(User_Id.Parse(station), ThePassword, null, null, out var notSet), Is.True, notSet);
+
+            Target ("away-first",  away, id2);
+            Target ("second",      id2);
+            Target ("away-alone",  away);
+            Forward("cs001", "away-first");
+            Forward("cs002", "second");
+            Forward("cs003", "away-alone");
+
+            // cs004 and cs005 name no target; cs006 neither, and is switched off.
+            Assert.That(gateway!.WebSocketLogins.TrySetEnabled(User_Id.Parse("cs006"), false, out var notSwitched), Is.True, notSwitched);
+
+            var counted = gateway.StationsByPeer();
+
+            Assert.That(counted, Is.Not.Null, "a gateway that forwards counts nothing");
+
+            Assert.Multiple(() => {
+                Assert.That(counted![PeerOf(id1)],   Is.EqualTo(new PeerStations(First: 0, InReserve: 0, WithoutTarget: 2, Now: 2)), "the back end in charge");
+                Assert.That(counted [PeerOf(id2)],   Is.EqualTo(new PeerStations(First: 1, InReserve: 1, WithoutTarget: 0, Now: 2)), "the second CSMS");
+                Assert.That(counted [PeerOf(away)],  Is.EqualTo(new PeerStations(First: 2, InReserve: 0, WithoutTarget: 0, Now: 0)), "the CSMS that is away");
+            });
+
+            Assert.That(gateway.TryUpdateForwardingConfiguration(new JObject(new JProperty("enabled", false)), out var error), Is.True, error);
+            Assert.That(gateway.StationsByPeer(), Is.Null, "switched off, it counts all the same");
+
+        }
+
+        #endregion
+
         #region SwitchedOff_NothingIsForwarded_AndSwitchedOnAgainItIs()
 
         /// <summary>
