@@ -32,6 +32,7 @@ using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.SecureShell;
 
 using cloud.charging.open.protocols.OCPP.Node;
+using cloud.charging.open.protocols.OCPP.Node.Serving;
 
 using cloud.charging.open.Gateway.CommandLine;
 using cloud.charging.open.Gateway.Configuration;
@@ -277,6 +278,9 @@ namespace cloud.charging.open.Gateway
 
             gw01 = BuildOCPPNode(this.OCPP);
 
+            // OCPP 1.6 passed through: under the gateway's name, as gw01.
+            gw16 = new ForwardingNode16(gw01.Id, DNSClient: DNSClient, Clock: TimeProvider);
+
             // What only the CSMS asks - SetVariables, Reset and the like - over
             // the gateway's line up to it, and from no station; and what a
             // station sends on, up to the CSMS in its own name, and to no other
@@ -285,6 +289,10 @@ namespace cloud.charging.open.Gateway
             // default, as a local controller's.
             AttachRequestGate(gw01);
             AttachForwardingGate(gw01);
+
+            // The same gates for OCPP 1.6, and what only a central system asks.
+            AttachRequestGate(gw16);
+            AttachForwardingGate(gw16);
 
             // Who may sign what is sent to this gateway itself.
             AttachSignaturePolicy(gw01);

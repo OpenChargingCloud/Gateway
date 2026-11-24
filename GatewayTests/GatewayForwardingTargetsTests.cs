@@ -49,11 +49,14 @@ namespace cloud.charging.open.Gateway.Tests
     /// </summary>
     /// <remarks>
     /// Plain WebSocket clients at both ends, as in GatewayCSMSConnectingInTests, whose helpers these
-    /// are: what is tested is what is passed on to whom, frame by frame.
+    /// are: what is tested is what is passed on to whom, frame by frame. In OCPP 2.1, and in OCPP 1.6
+    /// passed through: charging stations of OCPP 1.6 and central systems of OCPP 1.6 that connect.
     /// </remarks>
-    [TestFixture(false)]
-    [TestFixture(true)]
-    public class GatewayForwardingTargetsTests(Boolean Overlay)
+    [TestFixture(false, "2.1")]
+    [TestFixture(true,  "2.1")]
+    [TestFixture(false, "1.6")]
+    [TestFixture(true,  "1.6")]
+    public class GatewayForwardingTargetsTests(Boolean Overlay, String Version)
     {
 
         #region (class) Line
@@ -94,11 +97,12 @@ namespace cloud.charging.open.Gateway.Tests
             public async Task<HttpStatusCode> Connect(String   URL,
                                                       String   Login,
                                                       String   Password,
+                                                      String   Subprotocol,
                                                       Boolean  InTheOverlayNetwork = false)
             {
 
                 socket.Options.CollectHttpResponseDetails = true;
-                socket.Options.AddSubProtocol("ocpp2.1");
+                socket.Options.AddSubProtocol(Subprotocol);
                 socket.Options.SetRequestHeader("Authorization", "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Login}:{Password}")));
 
                 if (InTheOverlayNetwork)
@@ -388,7 +392,7 @@ namespace cloud.charging.open.Gateway.Tests
                                                           new JProperty("address",           "127.0.0.1"),
                                                           new JProperty("port",              TestPorts.Free().ToUInt16()),
                                                           new JProperty("clientAuthentication",  new JArray("httpAuthWithoutTLS")),
-                                                          new JProperty("subprotocols",      new JArray("ocpp2.1"))
+                                                          new JProperty("subprotocols",      new JArray("ocpp2.1", "ocpp1.6"))
                                                       ))
                                                   ).ToString());
 
@@ -425,7 +429,22 @@ namespace cloud.charging.open.Gateway.Tests
             => String.Join(Environment.NewLine, said);
 
         private String Mode
-            => Overlay ? "overlay" : "standard";
+            => (Overlay ? "overlay" : "standard") + ", OCPP " + Version;
+
+        private Boolean Is16
+            => Version == "1.6";
+
+        /// <summary>
+        /// The subprotocol both ends ask for.
+        /// </summary>
+        private String Subprotocol
+            => Is16 ? "ocpp1.6" : "ocpp2.1";
+
+        /// <summary>
+        /// The name a back end of this version goes by in what it sends.
+        /// </summary>
+        private String BackEndName
+            => Is16 ? "CentralSystem" : "CSMS";
 
         private static String Door(Gateway Gateway, String Name)
             => $"ws://127.0.0.1:{Gateway.OCPPServerSettings.TCPPort}/{Name}";
@@ -437,7 +456,7 @@ namespace cloud.charging.open.Gateway.Tests
         /// Write down the CSMS that connects: its WebSocket login with what it signs in with, and the
         /// connection the other end makes.
         /// </summary>
-        private static String WriteDownTheCSMS(Gateway Gateway, User_Id? Login = null)
+        private static String WriteDownTheCSMS(Gateway Gateway, User_Id? Login = null, String? OCPPVersion = null)
         {
 
             var name = Login ?? User_Id.Parse(CSMSName);
@@ -447,7 +466,8 @@ namespace cloud.charging.open.Gateway.Tests
 
             Assert.That(Gateway.Connections.TryAddConnection(I18NString.Create("The CSMS, connecting"), URL.Parse(Door(Gateway, name.ToString())), "CSMS", true, null, null,
                                                              out var id, out error,
-                                                             Inbound: true),
+                                                             OCPPVersion:  OCPPVersion,
+                                                             Inbound:      true),
                         Is.True, error);
 
             return id!;
@@ -455,7 +475,7 @@ namespace cloud.charging.open.Gateway.Tests
         }
 
         private String WriteDownTheCSMS(User_Id? Login = null)
-            => WriteDownTheCSMS(gateway!, Login);
+            => WriteDownTheCSMS(gateway!, Login, Is16 ? "OCPP1.6" : null);
 
         /// <summary>
         /// Switch the connection of the CSMS on or off: "Connect by itself", which is what lets it in.
@@ -504,7 +524,7 @@ namespace cloud.charging.open.Gateway.Tests
             var id    = WriteDownTheCSMS();
             var csms  = new Line("CSMS");
 
-            Assert.That(await csms.Connect(Door(CSMSName), CSMSName, ItsPassword, Overlay), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
+            Assert.That(await csms.Connect(Door(CSMSName), CSMSName, ItsPassword, Subprotocol, Overlay), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
 
             await Until(() => StatusOf(id) == ConnectionStatus.Connected, "The CSMS being connected");
 
@@ -522,7 +542,7 @@ namespace cloud.charging.open.Gateway.Tests
 
             var station = new Line(Id.ToString());
 
-            Assert.That(await station.Connect(Door(Id.ToString()), Id.ToString(), ThePassword), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
+            Assert.That(await station.Connect(Door(Id.ToString()), Id.ToString(), ThePassword, Subprotocol), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
 
             return station;
 
@@ -559,7 +579,7 @@ namespace cloud.charging.open.Gateway.Tests
             var id    = WriteDownTheCSMS(User_Id.Parse(Name));
             var csms  = new Line("CSMS");
 
-            Assert.That(await csms.Connect(Door(Name), Name, ItsPassword, Overlay), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
+            Assert.That(await csms.Connect(Door(Name), Name, ItsPassword, Subprotocol, Overlay), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
 
             await Until(() => StatusOf(id) == ConnectionStatus.Connected, $"'{Name}' being connected");
 
@@ -576,21 +596,30 @@ namespace cloud.charging.open.Gateway.Tests
         private void Forward(String Station, String? TargetId)
             => Assert.That(gateway!.WebSocketLogins.TrySetTarget(User_Id.Parse(Station), TargetId, out var error), Is.True, error);
 
-        private static JArray Boot(String Id, String Model)
+        /// <summary>
+        /// A BootNotification of the given model, in the version of OCPP the stations speak.
+        /// </summary>
+        private JArray Boot(String Id, String Model)
 
-            => new (2, Id, "BootNotification", new JObject(
-                       new JProperty("chargingStation", new JObject(
-                           new JProperty("model",       Model),
-                           new JProperty("vendorName",  "GraphDefined")
-                       )),
-                       new JProperty("reason", "PowerUp")
-                   ));
+            => Is16
+                   ? new (2, Id, "BootNotification", new JObject(
+                             new JProperty("chargePointModel",   Model),
+                             new JProperty("chargePointVendor",  "GraphDefined")
+                         ))
+                   : new (2, Id, "BootNotification", new JObject(
+                             new JProperty("chargingStation", new JObject(
+                                 new JProperty("model",       Model),
+                                 new JProperty("vendorName",  "GraphDefined")
+                             )),
+                             new JProperty("reason", "PowerUp")
+                         ));
 
-        private static Boolean GotBoot(Line Line, String Model)
+        private Boolean GotBoot(Line Line, String Model)
 
             => Line.Got.Any(frame => frame[0].Value<Int32>() == 2 &&
                                      ActionOf(frame) == "BootNotification" &&
-                                     PayloadOf(frame)?["chargingStation"]?["model"]?.Value<String>() == Model);
+                                     (Is16 ? PayloadOf(frame)?["chargePointModel"]
+                                           : PayloadOf(frame)?["chargingStation"]?["model"])?.Value<String>() == Model);
 
         private static Boolean GotAsked(Line Line, String Action)
             => Line.Got.Any(frame => frame[0].Value<Int32>() == 2 && ActionOf(frame) == Action);
@@ -726,15 +755,15 @@ namespace cloud.charging.open.Gateway.Tests
             Forward("cs001",  "second");
 
             // Each its own station: answered, and the answer back to the one that asked.
-            await second.Send(new JArray(2, "cs001", "CSMS", "c2-own",     "GetLocalListVersion", new JObject()));
-            await first. Send(new JArray(2, "cs002", "CSMS", "c1-own",     "GetLocalListVersion", new JObject()));
+            await second.Send(new JArray(2, "cs001", BackEndName, "c2-own",     "GetLocalListVersion", new JObject()));
+            await first. Send(new JArray(2, "cs002", BackEndName, "c1-own",     "GetLocalListVersion", new JObject()));
 
             var c2Own = await second.AnswerTo("c2-own");
             var c1Own = await first. AnswerTo("c1-own");
 
             // Each the other's: refused.
-            await second.Send(new JArray(2, "cs002", "CSMS", "c2-foreign", "Reset", new JObject(new JProperty("type", "Immediate"))));
-            await first. Send(new JArray(2, "cs001", "CSMS", "c1-foreign", "Reset", new JObject(new JProperty("type", "Immediate"))));
+            await second.Send(new JArray(2, "cs002", BackEndName, "c2-foreign", "Reset", new JObject(new JProperty("type", Is16 ? "Hard" : "Immediate"))));
+            await first. Send(new JArray(2, "cs001", BackEndName, "c1-foreign", "Reset", new JObject(new JProperty("type", Is16 ? "Hard" : "Immediate"))));
 
             var c2Foreign = await second.AnswerTo("c2-foreign");
             var c1Foreign = await first. AnswerTo("c1-foreign");
@@ -752,6 +781,39 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(c1Foreign?[0].Value<Int32>(),                     Is.EqualTo(4), $"the first CSMS reached a station of the second: {c1Foreign?.ToString(Formatting.None)}");
                 Assert.That(GotAsked(cs001, "Reset") || GotAsked(cs002, "Reset"), Is.False, "a station was reset by a CSMS that is not its own");
 
+            });
+
+        }
+
+        #endregion
+
+        #region AStation_CannotAskTheGateway_WhatOnlyItsBackEndAsks()
+
+        /// <summary>
+        /// The gate at the door holds for the stations of either version: a station that addresses the
+        /// gateway itself with what only its back end asks - SetVariables in OCPP 2.1, ChangeConfiguration
+        /// in OCPP 1.6 - is told it may not.
+        /// </summary>
+        [Test]
+        public async Task AStation_CannotAskTheGateway_WhatOnlyItsBackEndAsks()
+        {
+
+            await TheGateway();
+
+            var (csms1, _) = await TheCSMSIsIn("csms-01");
+
+            await using var first  = csms1;
+            await using var cs001  = await AStation(User_Id.Parse("cs001"));
+
+            await cs001.Send(Is16
+                                 ? new JArray(2, GatewayId, "cs001", "ask-1", "ChangeConfiguration", new JObject(new JProperty("key", "HeartbeatInterval"), new JProperty("value", "1")))
+                                 : new JArray(2, GatewayId, "cs001", "ask-1", "SetVariables",        new JObject(new JProperty("setVariableData", new JArray()))));
+
+            var refused = await cs001.AnswerTo("ask-1");
+
+            Assert.Multiple(() => {
+                Assert.That(refused?[0].Value<Int32>(),                Is.EqualTo(4), $"the station was not refused: {refused?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+                Assert.That(refused?.ToString(Formatting.None) ?? "",  Does.Contain("CSMS to ask"));
             });
 
         }

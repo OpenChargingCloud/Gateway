@@ -829,6 +829,13 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(Gateway.CSMSOnlyActions,     Does.Contain("SetVariables"));
                 Assert.That(Gateway.CSMSOnlyActions,     Does.Contain("Reset"));
                 Assert.That(Gateway.CSMSOnlyActions,     Does.Not.Contain("BootNotification"));
+
+                // And those of OCPP 1.6, for its stations passed through.
+                Assert.That(Gateway.CentralSystemOnlyActions, Does.Contain("ChangeConfiguration"));
+                Assert.That(Gateway.CentralSystemOnlyActions, Does.Contain("RemoteStartTransaction"));
+                Assert.That(Gateway.CentralSystemOnlyActions, Does.Contain("Reset"));
+                Assert.That(Gateway.CentralSystemOnlyActions, Does.Not.Contain("BootNotification"));
+                Assert.That(Gateway.CentralSystemOnlyActions, Does.Not.Contain("StartTransaction"));
                 Assert.That(gateway.Node.OCPP.IN.RequestGate, Is.Not.Null, "the gateway's OCPP node has no gate");
             });
 

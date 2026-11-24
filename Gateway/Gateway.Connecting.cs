@@ -24,6 +24,7 @@ using cloud.charging.open.protocols.WWCP.Node.Certificates;
 
 using cloud.charging.open.protocols.WWCP.Node.Connections;
 using cloud.charging.open.protocols.WWCP.Node.Logins;
+using cloud.charging.open.protocols.OCPP.Node.Serving;
 
 using cloud.charging.open.Gateway.Configuration;
 
@@ -67,6 +68,12 @@ namespace cloud.charging.open.Gateway
         /// </summary>
         private readonly OCPPv2_1_GW.TestGatewayNode gw01;
 
+        /// <summary>
+        /// The node that passes on what the charging stations of OCPP 1.6 send,
+        /// and what central systems of OCPP 1.6 send them.
+        /// </summary>
+        private readonly ForwardingNode16 gw16;
+
         #endregion
 
         #region Properties
@@ -95,10 +102,12 @@ namespace cloud.charging.open.Gateway
         #region Node16 / Node21
 
         /// <summary>
-        /// A gateway speaks no OCPP 1.6 to the CSMS it connects to.
+        /// The node that passes OCPP 1.6 through: the charging stations of OCPP
+        /// 1.6 to central systems of OCPP 1.6. It forwards, and is no charge
+        /// point of its own to any central system.
         /// </summary>
         protected override OCPPv1_6.NetworkingNode.AOCPPNetworkingNode? Node16
-            => null;
+            => gw16;
 
         /// <summary>
         /// The node that speaks OCPP 2.1 for this gateway.
