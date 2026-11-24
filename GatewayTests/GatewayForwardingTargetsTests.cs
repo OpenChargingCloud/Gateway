@@ -873,6 +873,93 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+        #region TheOCPPLog_HasWhatWasForwarded_BothWays()
+
+        /// <summary>
+        /// The OCPP log of the gateway has what it forwarded, as it went over its connections: a
+        /// request of a station with a target, in from the station and out to its peer, the answer in
+        /// from the peer and out to the station; a request of a CSMS down to its station and back; and
+        /// a request refused, in from the CSMS that sent it and the error out to it - every answer told
+        /// by the action of the request it answers, though the gateway asked under an id of its own.
+        /// </summary>
+        [Test]
+        public async Task TheOCPPLog_HasWhatWasForwarded_BothWays()
+        {
+
+            await TheGateway();
+
+            var (csms1, _)   = await TheCSMSIsIn("csms-01");
+            await Task.Delay(20);
+            var (csms2, id2) = await TheCSMSIsIn("csms-02");
+
+            await using var first   = csms1;
+            await using var second  = csms2;
+
+            await using var cs001   = await AStation(User_Id.Parse("cs001"));
+            await using var cs002   = await AStation(User_Id.Parse("cs002"));
+
+            Target ("second", id2);
+            Forward("cs001",  "second");
+
+            // Up, to the target, and back.
+            await cs001.Send(Boot("boot-1", "Targeted"));
+            Assert.That((await cs001.AnswerTo("boot-1"))?[0].Value<Int32>(), Is.EqualTo(3), Log);
+
+            // Down, from the target to its station, and back.
+            await second.Send(new JArray(2, "cs001", BackEndName, "c2-own", "GetLocalListVersion", new JObject()));
+            Assert.That((await second.AnswerTo("c2-own"))?[0].Value<Int32>(), Is.EqualTo(3), Log);
+
+            // Down, to a station that is not this CSMS's: refused.
+            await first.Send(new JArray(2, "cs001", BackEndName, "c1-foreign", "Reset", new JObject(new JProperty("type", Is16 ? "Hard" : "Immediate"))));
+            Assert.That((await first.AnswerTo("c1-foreign"))?[0].Value<Int32>(), Is.EqualTo(4), Log);
+
+            await Until(() => gateway!.OCPPMessages.Count >= 9, "the OCPP log having every message");
+
+            var messages = gateway!.OCPPMessages.Recent(100).ToArray();
+
+            String Seen()
+                => String.Join(Environment.NewLine, messages.Select(entry => $"{entry.Direction} {entry.Kind} {entry.Peer} {entry.Action} {entry.Message.ToString(Formatting.None)}"));
+
+            Int32 Count(cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageDirection  Direction,
+                        cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind       Kind,
+                        String                                                                 Action,
+                        String?                                                                Peer = null)
+
+                => messages.Count(entry => entry.Direction == Direction &&
+                                           entry.Kind      == Kind      &&
+                                           entry.Action    == Action    &&
+                                           (Peer is null || entry.Peer == Peer));
+
+            TestContext.Out.WriteLine(Seen());
+
+            const cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageDirection In   = cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageDirection.In;
+            const cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageDirection Out  = cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageDirection.Out;
+            const cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind      Call = cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind.Request;
+            const cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind      Ok   = cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind.Response;
+            const cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind      No   = cloud.charging.open.protocols.OCPP.Node.Logging.OCPPMessageKind.RequestError;
+
+            Assert.Multiple(() => {
+
+                Assert.That(Count(In,  Call, "BootNotification",    "cs001"), Is.EqualTo(1), $"the station's request, in.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, Call, "BootNotification"),             Is.EqualTo(1), $"the station's request, out to its peer.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(In,  Ok,   "BootNotification"),             Is.EqualTo(1), $"the peer's answer, in.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, Ok,   "BootNotification",    "cs001"), Is.EqualTo(1), $"the answer, out to the station.{Environment.NewLine}{Seen()}");
+
+                Assert.That(Count(In,  Call, "GetLocalListVersion"),          Is.EqualTo(1), $"the CSMS's request, in.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, Call, "GetLocalListVersion", "cs001"), Is.EqualTo(1), $"the CSMS's request, out to its station.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(In,  Ok,   "GetLocalListVersion", "cs001"), Is.EqualTo(1), $"the station's answer, in.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, Ok,   "GetLocalListVersion"),          Is.EqualTo(1), $"the answer, out to the CSMS.{Environment.NewLine}{Seen()}");
+
+                Assert.That(Count(In,  Call, "Reset"),                        Is.EqualTo(1), $"the foreign request, in.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, No,   "Reset"),                        Is.EqualTo(1), $"its refusal, out.{Environment.NewLine}{Seen()}");
+                Assert.That(Count(Out, Call, "Reset"),                        Is.EqualTo(0), $"the foreign request was passed on.{Environment.NewLine}{Seen()}");
+
+            });
+
+        }
+
+        #endregion
+
         #region SwitchedOff_NothingIsForwarded_AndSwitchedOnAgainItIs()
 
         /// <summary>
