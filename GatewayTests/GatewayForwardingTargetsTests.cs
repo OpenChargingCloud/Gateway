@@ -68,6 +68,12 @@ namespace cloud.charging.open.Gateway.Tests
         private sealed class Line : IAsyncDisposable
         {
 
+            /// <summary>
+            /// The last transaction id a CSMS of the test gave: the first one it gives is 4711, the
+            /// next one, by any CSMS, 4712 - as two CSMS do not give the same.
+            /// </summary>
+            public static Int32 TransactionIds = 4710;
+
             private readonly ClientWebSocket          socket  = new();
             private readonly CancellationTokenSource  ended   = new();
             private readonly ConcurrentQueue<JArray>  got     = new();
@@ -75,11 +81,25 @@ namespace cloud.charging.open.Gateway.Tests
             /// <summary>
             /// What it is in the frames it writes: "CSMS", or the station.
             /// </summary>
-            public String  Name    { get; }
+            public String  Name        { get; }
 
-            public Line(String Name)
+            /// <summary>
+            /// Whether it turns away every station that boots at it.
+            /// </summary>
+            public Boolean   TurnsAway  { get; }
+
+            /// <summary>
+            /// How long it takes to answer a request.
+            /// </summary>
+            public TimeSpan  Slowness   { get; }
+
+            public Line(String     Name,
+                        Boolean    TurnsAway  = false,
+                        TimeSpan?  Slowness   = null)
             {
-                this.Name = Name;
+                this.Name       = Name;
+                this.TurnsAway  = TurnsAway;
+                this.Slowness   = Slowness ?? TimeSpan.Zero;
             }
 
             /// <summary>
@@ -155,9 +175,16 @@ namespace cloud.charging.open.Gateway.Tests
 
                         // A request: answered in the frame it came in, to whom it came from.
                         if (frame[0].Value<Int32>() == 2)
+                        {
+
+                            if (Slowness > TimeSpan.Zero)
+                                await Task.Delay(Slowness, ended.Token);
+
                             await Send(IsOverlay(frame)
                                            ? new JArray(3, SourceOf(frame), Name, IdOf(frame), AnswerTo(ActionOf(frame)))
                                            : new JArray(3, IdOf(frame), AnswerTo(ActionOf(frame))));
+
+                        }
 
                     }
                 }
@@ -172,12 +199,16 @@ namespace cloud.charging.open.Gateway.Tests
 
                 => Action switch {
                        "BootNotification"  => new JObject(
-                                                  new JProperty("status",       "Accepted"),
+                                                  new JProperty("status",       TurnsAway ? "Rejected" : "Accepted"),
                                                   new JProperty("currentTime",  DateTimeOffset.UtcNow.ToString("o")),
                                                   new JProperty("interval",     300)
                                               ),
                        "Heartbeat"         => new JObject(
                                                   new JProperty("currentTime",  DateTimeOffset.UtcNow.ToString("o"))
+                                              ),
+                       "StartTransaction"  => new JObject(
+                                                  new JProperty("transactionId", Interlocked.Increment(ref TransactionIds)),
+                                                  new JProperty("idTagInfo",     new JObject(new JProperty("status", "Accepted")))
                                               ),
                        _                   => new JObject(new JProperty("answeredBy", Name))
                    };
@@ -339,6 +370,7 @@ namespace cloud.charging.open.Gateway.Tests
         {
 
             said.Clear();
+            Line.TransactionIds = 4710;
 
             directory = Path.Combine(Path.GetTempPath(), "gateway-forwarding-targets-" + Guid.NewGuid().ToString("N")[..12]);
             Directory.CreateDirectory(directory);
@@ -1006,6 +1038,397 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(gateway.Forwards,                   Is.True, "back to what its kind does, it does not forward");
                 Assert.That(GotBoot(first, "On"),               Is.True, $"switched on again, it was not forwarded.{Environment.NewLine}{Log}");
                 Assert.That(answered?[0].Value<Int32>(),        Is.EqualTo(3), answered?.ToString(Formatting.None));
+            });
+
+        }
+
+        #endregion
+
+        #region (private) failover helpers
+
+        /// <summary>
+        /// The CSMS of the given name, connected again over a line of its own: the one before it went.
+        /// </summary>
+        private async Task<Line> BackAgain(String Name, String Id, Boolean TurnsAway = false, TimeSpan? Slowness = null)
+        {
+
+            var csms = new Line("CSMS", TurnsAway, Slowness);
+
+            Assert.That(await csms.Connect(Door(Name), Name, ItsPassword, Subprotocol, Overlay), Is.EqualTo(HttpStatusCode.SwitchingProtocols), Log);
+
+            await Until(() => StatusOf(Id) == ConnectionStatus.Connected, $"'{Name}' being connected again");
+
+            return csms;
+
+        }
+
+        /// <summary>
+        /// The CSMS of the given connection gone: its line closed, and the gateway knowing it.
+        /// </summary>
+        private async Task Gone(Line CSMS, String Id)
+        {
+
+            await CSMS.DisposeAsync();
+
+            await Until(() => StatusOf(Id) != ConnectionStatus.Connected, "The CSMS being gone");
+
+        }
+
+        private JArray Status(String Id, Int32 Connector, String State)
+
+            => Is16
+                   ? new (2, Id, "StatusNotification", new JObject(
+                             new JProperty("connectorId",  Connector),
+                             new JProperty("errorCode",    "NoError"),
+                             new JProperty("status",       State)
+                         ))
+                   : new (2, Id, "StatusNotification", new JObject(
+                             new JProperty("timestamp",        DateTimeOffset.UtcNow.ToString("o")),
+                             new JProperty("connectorStatus",  State),
+                             new JProperty("evseId",           1),
+                             new JProperty("connectorId",      Connector)
+                         ));
+
+        private static JArray Heartbeat(String Id)
+            => new (2, Id, "Heartbeat", new JObject());
+
+        /// <summary>
+        /// A charging session begins: a TransactionEvent "Started" in OCPP 2.1, a StartTransaction in
+        /// OCPP 1.6 - which its CSMS answers with the transaction 4711.
+        /// </summary>
+        private JArray Started(String Id, String Session)
+
+            => Is16
+                   ? new (2, Id, "StartTransaction", new JObject(
+                             new JProperty("connectorId",  1),
+                             new JProperty("idTag",        "TAG-1"),
+                             new JProperty("meterStart",   0),
+                             new JProperty("timestamp",    DateTimeOffset.UtcNow.ToString("o"))
+                         ))
+                   : TransactionEvent(Id, Session, "Started", 0);
+
+        /// <summary>
+        /// A part of a charging session: a TransactionEvent "Updated" in OCPP 2.1, the MeterValues of
+        /// the transaction 4711 in OCPP 1.6.
+        /// </summary>
+        private JArray Updated(String Id, String Session, Int32 SeqNo)
+
+            => Is16
+                   ? new (2, Id, "MeterValues", new JObject(
+                             new JProperty("connectorId",    1),
+                             new JProperty("transactionId",  4711),
+                             new JProperty("meterValue",     new JArray(new JObject(
+                                 new JProperty("timestamp",     DateTimeOffset.UtcNow.ToString("o")),
+                                 new JProperty("sampledValue",  new JArray(new JObject(new JProperty("value", $"{SeqNo}0"))))
+                             )))
+                         ))
+                   : TransactionEvent(Id, Session, "Updated", SeqNo);
+
+        /// <summary>
+        /// A charging session ends: a TransactionEvent "Ended" in OCPP 2.1, a StopTransaction of the
+        /// transaction 4711 in OCPP 1.6.
+        /// </summary>
+        private JArray Ended(String Id, String Session, Int32 SeqNo)
+
+            => Is16
+                   ? new (2, Id, "StopTransaction", new JObject(
+                             new JProperty("transactionId",  4711),
+                             new JProperty("meterStop",      SeqNo * 10),
+                             new JProperty("timestamp",      DateTimeOffset.UtcNow.ToString("o"))
+                         ))
+                   : TransactionEvent(Id, Session, "Ended", SeqNo);
+
+        private static JArray TransactionEvent(String Id, String Session, String EventType, Int32 SeqNo)
+
+            => new (2, Id, "TransactionEvent", new JObject(
+                       new JProperty("eventType",        EventType),
+                       new JProperty("timestamp",        DateTimeOffset.UtcNow.ToString("o")),
+                       new JProperty("triggerReason",    EventType == "Started" ? "Authorized" : EventType == "Ended" ? "StopAuthorized" : "MeterValuePeriodic"),
+                       new JProperty("seqNo",            SeqNo),
+                       new JProperty("transactionInfo",  new JObject(new JProperty("transactionId", Session)))
+                   ));
+
+        /// <summary>
+        /// The parts of charging sessions a CSMS got, in the order it got them: what each is, and of
+        /// which session - its transaction id, or, in OCPP 1.6, 4711.
+        /// </summary>
+        private static String[] SessionPartsGot(Line CSMS)
+
+            => [.. CSMS.Got.Where (frame => frame[0].Value<Int32>() == 2 &&
+                                            ActionOf(frame) is "TransactionEvent" or "StartTransaction" or "MeterValues" or "StopTransaction").
+                            Select(frame => ActionOf(frame) == "TransactionEvent"
+                                                ? $"{PayloadOf(frame)?["eventType"]} {PayloadOf(frame)?["transactionInfo"]?["transactionId"]}"
+                                                : $"{ActionOf(frame)} {PayloadOf(frame)?["transactionId"]?.ToString() ?? "-"}")];
+
+        /// <summary>
+        /// The requests a CSMS got in the name of the given station - every one, in a frame of the
+        /// standard networking mode, which names nobody.
+        /// </summary>
+        private static String[] AskedFor(Line CSMS, String Station)
+
+            => [.. CSMS.Got.Where (frame => frame[0].Value<Int32>() == 2 && (!IsOverlay(frame) || SourceOf(frame) == Station)).
+                            Select(ActionOf)];
+
+        /// <summary>
+        /// Everything a station got that is not the answer to one of the given requests of its own.
+        /// </summary>
+        private static JArray[] Unasked(Line Station, params String[] RequestIds)
+
+            => [.. Station.Got.Where(frame => !(frame[0].Value<Int32>() is 3 or 4 && RequestIds.Contains(IdOf(frame))))];
+
+        private static Int32 KindOf(JArray? Frame)
+            => Frame?[0].Value<Int32>() ?? 0;
+
+        #endregion
+
+
+        #region WhenItsBackEndGoes_TheNextOneIsToldWhoTheStationIs_AndTheFirstOneWhenItReturns()
+
+        /// <summary>
+        /// A station's back end goes: the next one of its target is told who the station is - its
+        /// BootNotification and the state of its connector, in its name - before what the station sends
+        /// next, which goes to it. The station gets no answer it did not ask for. When the first one
+        /// returns, the station goes back to it, and it is told the same - and what changed meanwhile.
+        /// </summary>
+        [Test]
+        public async Task WhenItsBackEndGoes_TheNextOneIsToldWhoTheStationIs_AndTheFirstOneWhenItReturns()
+        {
+
+            await TheGateway();
+
+            var (first,  id1) = await TheCSMSIsIn("csms-01");
+            await Task.Delay(20);
+            var (csms2,  id2) = await TheCSMSIsIn("csms-02");
+
+            await using var second = csms2;
+            await using var cs001  = await AStation(User_Id.Parse("cs001"));
+
+            Target ("both", id1, id2);
+            Forward("cs001", "both");
+
+            await cs001.Send(Boot  ("boot-1", "Failing over"));
+            Assert.That(KindOf(await cs001.AnswerTo("boot-1")),   Is.EqualTo(3), Log);
+
+            await cs001.Send(Status("status-1", 1, "Available"));
+            Assert.That(KindOf(await cs001.AnswerTo("status-1")), Is.EqualTo(3), Log);
+
+            Assert.That(AskedFor(first,  "cs001"), Is.EqualTo(new[] { "BootNotification", "StatusNotification" }), "before it went, the first one did not get what the station sent");
+            Assert.That(AskedFor(second, "cs001"), Is.Empty, "before the first one went, the second one got something");
+
+            await Gone(first, id1);
+
+            await cs001.Send(Status("status-2", 2, "Occupied"));
+            var toStatus2 = await cs001.AnswerTo("status-2");
+
+            await Until(() => AskedFor(second, "cs001").Length >= 3, "The second CSMS being told who the station is");
+
+            Assert.Multiple(() => {
+                Assert.That(KindOf(toStatus2),             Is.EqualTo(3), $"the station was not answered: {toStatus2?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+                Assert.That(AskedFor(second, "cs001"),     Is.EqualTo(new[] { "BootNotification", "StatusNotification", "StatusNotification" }),
+                                                           $"the second one was not told who the station is, and then what it sent ({Mode}).{Environment.NewLine}{Log}");
+                Assert.That(GotBoot(second, "Failing over"), Is.True, "the BootNotification it was told is not the station's");
+                Assert.That(Unasked(cs001, "boot-1", "status-1", "status-2"), Is.Empty, "the station got an answer it did not ask for");
+                Assert.That(Log,                           Does.Contain("is at '").And.Contain("no longer at '"));
+            });
+
+            await using var again = await BackAgain("csms-01", id1);
+
+            await Until(() => AskedFor(again, "cs001").Length >= 3, "The first CSMS being told who the station is, back again");
+
+            await cs001.Send(Heartbeat("beat-1"));
+            Assert.That(KindOf(await cs001.AnswerTo("beat-1")), Is.EqualTo(3), Log);
+
+            Assert.Multiple(() => {
+                Assert.That(AskedFor(again, "cs001"),       Is.EqualTo(new[] { "BootNotification", "StatusNotification", "StatusNotification", "Heartbeat" }),
+                                                            $"back again, the first one was not told who the station is, or did not get what it sent next ({Mode}).{Environment.NewLine}{Log}");
+                Assert.That(AskedFor(second, "cs001"),      Does.Not.Contain("Heartbeat"), "the second one got what the station sent after the first one returned");
+            });
+
+        }
+
+        #endregion
+
+        #region ASession_StaysWithTheBackEndItBeganAt_WhatCannotReachItIsHeldBack_AndSentInOrder()
+
+        /// <summary>
+        /// A charging session begins at the first CSMS, which goes: what follows of the session does
+        /// not go to the second one - the station is answered by the gateway and it is held back, on
+        /// disk -, a session that begins now does. When the first one returns, it gets what was held
+        /// back before the end of the session, which the station sends while the first one is being
+        /// told who it is again - slowly -, and nothing is held back any more.
+        /// </summary>
+        [Test]
+        public async Task ASession_StaysWithTheBackEndItBeganAt_WhatCannotReachItIsHeldBack_AndSentInOrder()
+        {
+
+            await TheGateway();
+
+            var (first,  id1) = await TheCSMSIsIn("csms-01");
+            await Task.Delay(20);
+            var (csms2,  id2) = await TheCSMSIsIn("csms-02");
+
+            await using var second = csms2;
+            await using var cs001  = await AStation(User_Id.Parse("cs001"));
+
+            Target ("both", id1, id2);
+            Forward("cs001", "both");
+
+            await cs001.Send(Boot   ("boot-1",  "Charging"));
+            await cs001.AnswerTo("boot-1");
+
+            await cs001.Send(Started("start-1", "tx-1"));
+            Assert.That(KindOf(await cs001.AnswerTo("start-1")), Is.EqualTo(3), Log);
+
+            var startedAtTheFirst = SessionPartsGot(first);
+
+            await Gone(first, id1);
+
+            await cs001.Send(Updated("update-1", "tx-1", 1));
+            var toUpdate = await cs001.AnswerTo("update-1");
+
+            var heldBack = Path.Combine(directory, "ocpp-buffer");
+
+            Assert.Multiple(() => {
+                Assert.That(startedAtTheFirst,                  Is.EqualTo(new[] { Is16 ? "StartTransaction -" : "Started tx-1" }), Log);
+                Assert.That(KindOf(toUpdate),                   Is.EqualTo(3), $"the station was not answered: {toUpdate?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+                Assert.That(toUpdate is null ? null : PayloadOf(toUpdate), Is.EqualTo(new JObject()), "the gateway's answer says more than that it was taken");
+                Assert.That(SessionPartsGot(second),            Is.Empty, "a part of a session that began at the first one went to the second one");
+                Assert.That(gateway!.HeldBack.Count,            Is.EqualTo(1), Log);
+                Assert.That(Directory.Exists(heldBack) && Directory.EnumerateFiles(heldBack, "*.jsonl").Any(), Is.True, "nothing is held back on disk");
+            });
+
+            // A session that begins now begins where the station is now.
+            await cs001.Send(Started("start-2", "tx-2"));
+            Assert.That(KindOf(await cs001.AnswerTo("start-2")), Is.EqualTo(3), Log);
+
+            Assert.That(SessionPartsGot(second), Is.EqualTo(new[] { Is16 ? "StartTransaction -" : "Started tx-2" }), Log);
+
+            await using var again = await BackAgain("csms-01", id1, Slowness: TimeSpan.FromMilliseconds(300));
+
+            await cs001.Send(Ended("end-1", "tx-1", 2));
+            var toEnd = await cs001.AnswerTo("end-1");
+
+            await Until(() => gateway!.HeldBack.Count == 0 && SessionPartsGot(again).Length >= 2, "What was held back, and the end of the session, being sent");
+
+            Assert.Multiple(() => {
+                Assert.That(KindOf(toEnd),                      Is.EqualTo(3), $"the station was not answered: {toEnd?.ToString(Formatting.None)}");
+                Assert.That(SessionPartsGot(again),             Is.EqualTo(Is16 ? new[] { "MeterValues 4711", "StopTransaction 4711" }
+                                                                                : new[] { "Updated tx-1",     "Ended tx-1" }),
+                                                                $"what was held back was not sent to the first one when it returned, in order ({Mode}).{Environment.NewLine}{Log}");
+                Assert.That(Directory.EnumerateFiles(heldBack, "*.jsonl").Any(), Is.False, "what was sent is still held back on disk");
+            });
+
+        }
+
+        #endregion
+
+        #region WithoutItsBackEnd_TheGatewayAnswersHeartbeatAndStatus_NotAnAuthorize()
+
+        /// <summary>
+        /// A station without a target, and the back end in charge gone, none other there: the gateway
+        /// answers a Heartbeat with its own time and a StatusNotification, and holds back a part of a
+        /// charging session - but answers no Authorize, which is the back end's to decide. Back again,
+        /// the back end gets what it missed: the state of the connector and the part of the session,
+        /// and no BootNotification, as the station was at it all the time.
+        /// </summary>
+        [Test]
+        public async Task WithoutItsBackEnd_TheGatewayAnswersHeartbeatAndStatus_NotAnAuthorize()
+        {
+
+            await TheGateway();
+
+            var (first, id1) = await TheCSMSIsIn("csms-01");
+
+            await using var cs001 = await AStation(User_Id.Parse("cs001"));
+
+            await cs001.Send(Boot   ("boot-1",  "Alone"));
+            await cs001.AnswerTo("boot-1");
+
+            await cs001.Send(Started("start-1", "tx-9"));
+            await cs001.AnswerTo("start-1");
+
+            await Gone(first, id1);
+
+            await cs001.Send(Heartbeat("beat-1"));
+            await cs001.Send(Status   ("status-1", 1, "Occupied"));
+            await cs001.Send(Updated  ("update-1", "tx-9", 1));
+            await cs001.Send(new JArray(2, "auth-1", "Authorize", Is16
+                                                                    ? new JObject(new JProperty("idTag", "TAG-1"))
+                                                                    : new JObject(new JProperty("idToken", new JObject(new JProperty("idToken", "TAG-1"), new JProperty("type", "ISO14443"))))));
+
+            var toBeat    = await cs001.AnswerTo("beat-1");
+            var toStatus  = await cs001.AnswerTo("status-1");
+            var toUpdate  = await cs001.AnswerTo("update-1");
+            var toAuth    = await cs001.AnswerTo("auth-1");
+
+            Assert.Multiple(() => {
+                Assert.That(KindOf(toBeat),                   Is.EqualTo(3), $"the Heartbeat was not answered: {toBeat?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+                Assert.That(toBeat is null ? null : PayloadOf(toBeat)?["currentTime"], Is.Not.Null, "the Heartbeat was answered without the time");
+                Assert.That(KindOf(toStatus),                 Is.EqualTo(3), $"the StatusNotification was not answered: {toStatus?.ToString(Formatting.None)}");
+                Assert.That(KindOf(toUpdate),                 Is.EqualTo(3), $"the part of the session was not answered: {toUpdate?.ToString(Formatting.None)}");
+                Assert.That(KindOf(toAuth),                   Is.EqualTo(4), $"the Authorize was answered by the gateway, or not at all ({Mode}): {toAuth?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+            });
+
+            await using var again = await BackAgain("csms-01", id1);
+
+            await Until(() => gateway!.HeldBack.Count == 0 && AskedFor(again, "cs001").Contains("StatusNotification"), "What the back end missed being sent");
+
+            Assert.Multiple(() => {
+                Assert.That(AskedFor(again, "cs001"),         Does.Not.Contain("BootNotification"), "the station was booted anew at the back end it was at all the time");
+                Assert.That(SessionPartsGot(again),           Is.EqualTo(new[] { Is16 ? "MeterValues 4711" : "Updated tx-9" }), Log);
+                Assert.That(AskedFor(again, "cs001"),         Does.Not.Contain("Heartbeat"), "a Heartbeat the gateway answered was sent on");
+            });
+
+        }
+
+        #endregion
+
+        #region ABackEndThatTurnsTheStationAway_IsPassedOver()
+
+        /// <summary>
+        /// The first back end goes, the second one turns the station away when it is told who it is:
+        /// the station goes on to the third one, and what it sends goes there.
+        /// </summary>
+        [Test]
+        public async Task ABackEndThatTurnsTheStationAway_IsPassedOver()
+        {
+
+            await TheGateway();
+
+            var (first, id1) = await TheCSMSIsIn("csms-01");
+            await Task.Delay(20);
+
+            var id2 = WriteDownTheCSMS(User_Id.Parse("csms-02"));
+            await using var second = await BackAgain("csms-02", id2, TurnsAway: true);
+            await Task.Delay(20);
+
+            var (csms3, id3) = await TheCSMSIsIn("csms-03");
+
+            await using var third = csms3;
+            await using var cs001 = await AStation(User_Id.Parse("cs001"));
+
+            Target ("three", id1, id2, id3);
+            Forward("cs001", "three");
+
+            await cs001.Send(Boot("boot-1", "Passed over"));
+            await cs001.AnswerTo("boot-1");
+
+            await Gone(first, id1);
+
+            await cs001.Send(Heartbeat("beat-1"));
+            var toBeat = await cs001.AnswerTo("beat-1");
+
+            // Past a look of the gateway at its back ends: the one that turned it away is not asked again.
+            await Task.Delay(TimeSpan.FromSeconds(6));
+
+            await cs001.Send(Heartbeat("beat-2"));
+            await cs001.AnswerTo("beat-2");
+
+            Assert.Multiple(() => {
+                Assert.That(KindOf(toBeat),               Is.EqualTo(3), $"the station was not answered: {toBeat?.ToString(Formatting.None)}{Environment.NewLine}{Log}");
+                Assert.That(AskedFor(second, "cs001"),    Is.EqualTo(new[] { "BootNotification" }), "the second one was not told who the station is, or was asked again after it turned it away");
+                Assert.That(AskedFor(third,  "cs001"),    Is.EqualTo(new[] { "BootNotification", "Heartbeat", "Heartbeat" }), $"the station did not go on to the third one ({Mode}).{Environment.NewLine}{Log}");
+                Assert.That(Log,                          Does.Contain("turned the charging station 'cs001' away"));
             });
 
         }

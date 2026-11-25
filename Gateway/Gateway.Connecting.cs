@@ -141,6 +141,11 @@ namespace cloud.charging.open.Gateway
                               NodeNoun
                           );
 
+            // What is held back for a CSMS that is not connected, of a charging
+            // session that began at it: beside the connections, and so kept over a
+            // restart.
+            HeldBackDirectory = Path.Combine(directory, HeldBackMessages.DefaultDirectoryName);
+
             keyPinning       = NewKeyPinning();
             OCPPConnecting.MakeTLSClientSource();
 
