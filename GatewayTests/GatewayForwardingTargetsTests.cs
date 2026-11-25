@@ -1254,8 +1254,10 @@ namespace cloud.charging.open.Gateway.Tests
         /// A charging session begins at the first CSMS, which goes: what follows of the session does
         /// not go to the second one - the station is answered by the gateway and it is held back, on
         /// disk -, a session that begins now does. When the first one returns, it gets what was held
-        /// back before the end of the session, which the station sends while the first one is being
-        /// told who it is again - slowly -, and nothing is held back any more.
+        /// back before the end of the session - which the station sends after the first one is told
+        /// who it is again, when what is held back for it is about to be sent: held up there by the
+        /// test, so that the end of the session comes in that very moment -, and nothing is held
+        /// back any more.
         /// </summary>
         [Test]
         public async Task ASession_StaysWithTheBackEndItBeganAt_WhatCannotReachItIsHeldBack_AndSentInOrder()
@@ -1297,26 +1299,83 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(Directory.Exists(heldBack) && Directory.EnumerateFiles(heldBack, "*.jsonl").Any(), Is.True, "nothing is held back on disk");
             });
 
+            // What the connections page is told: where the station is, and what is held back for whom.
+            var whileAway = gateway!.StationsByPeer()!;
+
+            Assert.Multiple(() => {
+                Assert.That(whileAway[PeerOf(id1)].HeldBack,       Is.EqualTo(1),     "what is held back for the first one is not said");
+                Assert.That(whileAway[PeerOf(id1)].HeldBackSince,  Is.Not.Null,       "when the oldest of it came is not said");
+                Assert.That(whileAway[PeerOf(id1)].Sessions,       Is.EqualTo(1),     "the session that began at the first one is not said to belong to it");
+                Assert.That(whileAway[PeerOf(id1)].At,             Is.Null,           "a station is said to be at a CSMS that is away");
+                Assert.That(whileAway[PeerOf(id2)].At,             Is.EqualTo(new[] { "cs001" }), "the station is not said to be at the second one");
+                Assert.That(whileAway[PeerOf(id2)].HeldBack,       Is.EqualTo(0));
+            });
+
             // A session that begins now begins where the station is now.
             await cs001.Send(Started("start-2", "tx-2"));
             Assert.That(KindOf(await cs001.AnswerTo("start-2")), Is.EqualTo(3), Log);
 
             Assert.That(SessionPartsGot(second), Is.EqualTo(new[] { Is16 ? "StartTransaction -" : "Started tx-2" }), Log);
 
-            await using var again = await BackAgain("csms-01", id1, Slowness: TimeSpan.FromMilliseconds(300));
+            // What is held back for the first one waits, once it is about to be sent, until the
+            // station sent the end of the session.
+            var aboutToBeSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var goOn          = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            await cs001.Send(Ended("end-1", "tx-1", 2));
-            var toEnd = await cs001.AnswerTo("end-1");
+            gateway!.WhenHeldBackIsAboutToBeSent = async backEnd => {
+                aboutToBeSent.TrySetResult();
+                await goOn.Task;
+            };
 
-            await Until(() => gateway!.HeldBack.Count == 0 && SessionPartsGot(again).Length >= 2, "What was held back, and the end of the session, being sent");
+            JArray?   toEnd;
+            String[]  beforeItWasSent;
+            Int32     heldBackThen;
 
-            Assert.Multiple(() => {
-                Assert.That(KindOf(toEnd),                      Is.EqualTo(3), $"the station was not answered: {toEnd?.ToString(Formatting.None)}");
-                Assert.That(SessionPartsGot(again),             Is.EqualTo(Is16 ? new[] { "MeterValues 4711", "StopTransaction 4711" }
+            try
+            {
+
+                await using var again = await BackAgain("csms-01", id1);
+
+                Assert.That(await Task.WhenAny(aboutToBeSent.Task, Task.Delay(TimeSpan.FromSeconds(30))), Is.SameAs(aboutToBeSent.Task),
+                            $"what is held back for the first one was not about to be sent when it returned.{Environment.NewLine}{Log}");
+
+                await cs001.Send(Ended("end-1", "tx-1", 2));
+                toEnd           = await cs001.AnswerTo("end-1");
+
+                beforeItWasSent = SessionPartsGot(again);
+                heldBackThen    = gateway!.HeldBack.Count;
+
+                goOn.TrySetResult();
+
+                await Until(() => gateway!.HeldBack.Count == 0 && SessionPartsGot(again).Length >= 2, "What was held back, and the end of the session, being sent");
+
+                Assert.Multiple(() => {
+                    Assert.That(beforeItWasSent,                Is.Empty, $"the end of the session overtook what was held back before it ({Mode}).{Environment.NewLine}{Log}");
+                    Assert.That(heldBackThen,                   Is.EqualTo(2), "the end of the session was not held back behind what was held back before it");
+                    Assert.That(KindOf(toEnd),                  Is.EqualTo(3), $"the station was not answered: {toEnd?.ToString(Formatting.None)}");
+                    Assert.That(SessionPartsGot(again),         Is.EqualTo(Is16 ? new[] { "MeterValues 4711", "StopTransaction 4711" }
                                                                                 : new[] { "Updated tx-1",     "Ended tx-1" }),
                                                                 $"what was held back was not sent to the first one when it returned, in order ({Mode}).{Environment.NewLine}{Log}");
-                Assert.That(Directory.EnumerateFiles(heldBack, "*.jsonl").Any(), Is.False, "what was sent is still held back on disk");
-            });
+                    Assert.That(Directory.EnumerateFiles(heldBack, "*.jsonl").Any(), Is.False, "what was sent is still held back on disk");
+                });
+
+                var backAgain = gateway!.StationsByPeer()!;
+
+                Assert.Multiple(() => {
+                    Assert.That(backAgain[PeerOf(id1)].At,             Is.EqualTo(new[] { "cs001" }), "the station is not said to be back at the first one");
+                    Assert.That(backAgain[PeerOf(id1)].HeldBack,       Is.EqualTo(0),     "what was sent is still said to be held back");
+                    Assert.That(backAgain[PeerOf(id1)].HeldBackSince,  Is.Null);
+                    Assert.That(backAgain[PeerOf(id1)].Sessions,       Is.EqualTo(0),     "a session that ended is still said to belong to the first one");
+                    Assert.That(backAgain[PeerOf(id2)].Sessions,       Is.EqualTo(1),     "the session that began at the second one is not said to belong to it");
+                    Assert.That(backAgain[PeerOf(id2)].At,             Is.Null,           "the station is still said to be at the second one");
+                });
+
+            }
+            finally
+            {
+                goOn.TrySetResult();
+                gateway!.WhenHeldBackIsAboutToBeSent = null;
+            }
 
         }
 
@@ -1429,6 +1488,15 @@ namespace cloud.charging.open.Gateway.Tests
                 Assert.That(AskedFor(second, "cs001"),    Is.EqualTo(new[] { "BootNotification" }), "the second one was not told who the station is, or was asked again after it turned it away");
                 Assert.That(AskedFor(third,  "cs001"),    Is.EqualTo(new[] { "BootNotification", "Heartbeat", "Heartbeat" }), $"the station did not go on to the third one ({Mode}).{Environment.NewLine}{Log}");
                 Assert.That(Log,                          Does.Contain("turned the charging station 'cs001' away"));
+            });
+
+            // The connections page: by its target, the station would be at the second one; it is at the third.
+            var counted = gateway!.StationsByPeer()!;
+
+            Assert.Multiple(() => {
+                Assert.That(counted[PeerOf(id2)].Now,     Is.EqualTo(1), "by its target, the station goes to the second one");
+                Assert.That(counted[PeerOf(id2)].At,      Is.Null,       "the station is said to be at the one that turned it away");
+                Assert.That(counted[PeerOf(id3)].At,      Is.EqualTo(new[] { "cs001" }), "the station is not said to be at the third one");
             });
 
         }
