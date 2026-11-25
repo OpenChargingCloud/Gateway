@@ -1,4 +1,7 @@
 # Gateway
+
+![The EV charging test environment, the gateway (GW) highlighted](docs/EVChargingTestEnvironment.svg)
+
 OCPP Gateway
 
 
