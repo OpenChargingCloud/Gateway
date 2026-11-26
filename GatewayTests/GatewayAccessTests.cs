@@ -521,6 +521,53 @@ namespace cloud.charging.open.Gateway.Tests
 
         #endregion
 
+
+        #region TheDeviceModelIsReadAsTheOCPPLogIs()
+
+        /// <summary>
+        /// The OCPP Device Model page of the gateway, at its JSON API: let in
+        /// where the OCPP log lets in - on a gateway a systemadmin, not an
+        /// operator -, its components of OCPP 2.1 and no configuration keys of
+        /// OCPP 1.6, which it passes on but has none of its own; the values
+        /// OCPP keeps WriteOnly shown, as to a systemadmin alone (Achim 2026-11-26).
+        /// </summary>
+        [Test]
+        public async Task TheDeviceModelIsReadAsTheOCPPLogIs()
+        {
+
+            await TestPorts.StartedOnFreshPorts(GatewayFrom);
+
+            using var @operator  = await SignedInAs(User_Id.Parse("operator9"), "operator");
+            using var admin      = await SignedInAs(User_Id.Parse("admin9"),    WWCPNode.AdminRole.ToString());
+
+            var asOperator       = await @operator.GetAsync("api/v1/ocpp/deviceModel");
+            var operatorLog      = await @operator.GetAsync("api/v1/ocpp/messages");
+            var asAdmin          = await admin.    GetAsync("api/v1/ocpp/deviceModel");
+            var adminLog         = await admin.    GetAsync("api/v1/ocpp/messages");
+
+            var adminSees        = JObject.Parse(await asAdmin.Content.ReadAsStringAsync());
+
+            Assert.Multiple(() => {
+
+                Assert.That(asOperator.StatusCode,                              Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(operatorLog.StatusCode,                             Is.EqualTo(HttpStatusCode.Forbidden));
+                Assert.That(asAdmin.StatusCode,                                 Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(adminLog.StatusCode,                                Is.EqualTo(HttpStatusCode.OK));
+
+                Assert.That(adminSees["writeOnlyShown"]?.Value<Boolean>(),      Is.True);
+                Assert.That(adminSees.Descendants().OfType<JProperty>().Any(property => property.Name == "hidden"),
+                            Is.False,
+                            "a value was hidden from a systemadmin");
+
+                Assert.That((adminSees["deviceModel"]?["ocpp2.1"] as JObject)?.Count ?? 0,  Is.GreaterThan(0), adminSees.ToString());
+                Assert.That((adminSees["deviceModel"] as JObject)?.ContainsKey("ocpp1.6"),  Is.False, "A gateway with no configuration keys of its own showed keys of OCPP 1.6.");
+
+            });
+
+        }
+
+        #endregion
+
     }
 
 }

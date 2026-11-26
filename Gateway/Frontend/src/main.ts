@@ -13,6 +13,7 @@ import { nodeMenu, startNode } from '@node/start';
 import { sshKeysSection }         from '@ocpp/sshKeys';
 import { connectionsPage }        from '@ocpp/pages/connections';
 import { ocppLogMenuEntry, ocppLogPage } from '@ocpp/pages/ocppLog';
+import { deviceModelMenuEntry, deviceModelPage } from '@ocpp/pages/deviceModel';
 import { ocppServerPage }         from '@ocpp/pages/ocppServer';
 import { stationLoginsPage }      from '@ocpp/pages/stationLogins';
 import { clientTrustPage }        from '@ocpp/pages/clientTrust';
@@ -70,6 +71,8 @@ startNode({
         ]),
         // Every OCPP message this node sent and received.
         ocppLogMenuEntry,
+        // What this node shows OCPP of itself: its Device Model, as it is now.
+        deviceModelMenuEntry,
         nodeMenu.logs
     ],
     // The certificate store says what every node says of it, in a gateway's
@@ -120,6 +123,7 @@ startNode({
     pages: {
 
         '/ocpp-log':                                ocppLogPage,
+        '/ocpp-device-model':                       deviceModelPage,
         '/configuration':                           configurationPage,
         '/configuration/connections':               connectionsPage,
         '/configuration/ocpp-server':               ocppServerPage,
