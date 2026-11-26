@@ -29,6 +29,7 @@ using org.GraphDefined.Vanaheimr.Hermod.Mail;
 using cloud.charging.open.protocols.WWCP.Node.CommandLine;
 using cloud.charging.open.protocols.WWCP.Node.Configuration;
 using cloud.charging.open.protocols.WWCP.Node.TestKit;
+using cloud.charging.open.protocols.OCPP.Node;
 using cloud.charging.open.protocols.OCPP.Node.Serving.CommandLine;
 using cloud.charging.open.protocols.WWCP.Node.Logins;
 
@@ -40,11 +41,12 @@ namespace cloud.charging.open.Gateway.Tests
 {
 
     /// <summary>
-    /// stationKeys and stationPins on a gateway: the commands of every node
-    /// that serves charging stations, WWCP_OCPP_Node's, registered by the
-    /// gateway's command line - there once, naming "this gateway", and asking
-    /// over SSH for the gateway's "stations" as the pages of its station
-    /// server do.
+    /// stationKeys, stationPins, stationTargets and serverKeys on a gateway:
+    /// the commands of every node that serves charging stations,
+    /// WWCP_OCPP_Node's, registered by the gateway's command line - there
+    /// once, naming "this gateway", and asking over SSH for the gateway's
+    /// "stations" as the pages of its station server do, or for its
+    /// "certificates" as the Server identities page does.
     /// </summary>
     /// <remarks>
     /// What the commands answer in every case is tested with the local
@@ -237,7 +239,10 @@ namespace cloud.charging.open.Gateway.Tests
                     Assert.That(commands.Count(command => command is StationKeysCommand), Is.EqualTo(1), "stationKeys");
                     Assert.That(commands.Count(command => command is StationPinsCommand), Is.EqualTo(1), "stationPins");
                     Assert.That(commands.Count(command => command is StationTargetsCommand), Is.EqualTo(1), "stationTargets");
+                    Assert.That(commands.Count(command => command is ServerKeysCommand),     Is.EqualTo(1), "serverKeys");
                 }
+
+                Assert.That(help,   Has.Some.StartsWith("serverKeys [list | create [<algorithm>] | next [<algorithm>] | switch]"));
 
                 Assert.That(help,   Has.Some.StartsWith("stationKeys [<station> [add <authorized_keys line> | remove <fingerprint>]]"));
                 Assert.That(help,   Has.Some.StartsWith("stationPins [<station> [add <key pin> [<label>] | remove <key pin>]]"));
@@ -431,6 +436,101 @@ namespace cloud.charging.open.Gateway.Tests
                 {
                     Assert.That(said, Has.Some.EqualTo($"'adam' at the command line over SSH gave the charging station 'cs001' the SSH key {FingerprintOf(key)}."));
                     Assert.That(said, Has.Some.Contains("'otto' was refused stations:edit on 'stationKeys'"));
+                }
+
+            });
+
+        }
+
+        #endregion
+
+
+        #region ServerKeys_AreMadeShownAndSwitched_AtTheConsole()
+
+        /// <summary>
+        /// The server key the stations pin, at the console: none to begin with,
+        /// then made and shown with its pin, a next one announced beside it,
+        /// and switched to - a second server key in the place of the first
+        /// refused, and the log naming the gateway.
+        /// </summary>
+        [Test]
+        public async Task ServerKeys_AreMadeShownAndSwitched_AtTheConsole()
+        {
+
+            var gw         = AGateway();
+            using var cli  = new GatewayCLI(gw);
+
+            var none       = await cli.Execute("serverKeys");
+            var made       = await cli.Execute("serverKeys create");
+            var current    = gw.Certificates.GetCurrentAndNextKey(OCPPServingNode.StationListener, out _)!;
+            var listed     = await cli.Execute("serverKeys list");
+            var again      = await cli.Execute("serverKeys create");
+            var announced  = await cli.Execute("serverKeys next");
+            gw.Certificates.GetCurrentAndNextKey(OCPPServingNode.StationListener, out var next);
+            var both       = await cli.Execute("serverKeys");
+            var switched   = await cli.Execute("serverKeys switch");
+            var unknown    = await cli.Execute("serverKeys rotate");
+
+            Assert.Multiple(() => {
+
+                Assert.That(none.First(),       Does.StartWith("No key is presented to the charging stations."));
+                Assert.That(made.First(),       Is.EqualTo($"key pin       {current.KeyPin.ToHex()}  {current.Id}"));
+                Assert.That(listed.First(),     Does.StartWith($"key pin       {current.KeyPin.ToHex()}  {current.Id}").And.EndWith("in its carrier certificate"));
+                Assert.That(again.Single(),     Does.StartWith("No key was made: ").And.Contain("Announce the new key as the next one"));
+                Assert.That(next,               Is.Not.Null);
+                Assert.That(announced.First(),  Is.EqualTo($"next key pin  {next!.KeyPin.ToHex()}  {next.Id}"));
+                Assert.That(both,               Has.Some.StartWith($"key pin       {current.KeyPin.ToHex()}"));
+                Assert.That(both,               Has.Some.StartWith($"next key pin  {next.KeyPin.ToHex()}"));
+                Assert.That(switched.First(),   Does.Contain($"'{next.Id}'").And.Contain(next.KeyPin.ToHex()));
+                Assert.That(gw.Certificates.GetCurrentAndNextKey(OCPPServingNode.StationListener, out _)?.Id, Is.EqualTo(next.Id));
+                Assert.That(unknown.Single(),   Does.StartWith("Usage: serverKeys "));
+
+                lock (said)
+                {
+                    Assert.That(said, Has.Some.EqualTo($"Somebody at the command line had this gateway generate the server key '{current.Id}' with the key pin {current.KeyPin.ToHex()}."));
+                    Assert.That(said, Has.Some.EqualTo($"Somebody at the command line switched the charging station server to the server key '{next.Id}'."));
+                }
+
+            });
+
+        }
+
+        #endregion
+
+        #region ServerKeys_OverSSH_AskForTheCertificates()
+
+        /// <summary>
+        /// Over SSH an operator, who may read the gateway's certificates and
+        /// not change them, may look at the server key and may not make one; an
+        /// administrator may, and the log names who did it.
+        /// </summary>
+        [Test]
+        public async Task ServerKeys_OverSSH_AskForTheCertificates()
+        {
+
+            await AStartedGateway();
+
+            using var @operator  = await OverSSHAs(User_Id.Parse("otto"), "operator");
+            using var admin      = await OverSSHAs(User_Id.Parse("adam"), "systemadmin");
+
+            var looked           = await @operator.Execute("serverKeys");
+            var refused          = await @operator.Execute("serverKeys create");
+            var keysAfterRefusal = gateway!.Certificates.ServerKeys(OCPPServingNode.StationListener).Count();
+            var made             = await admin.    Execute("serverKeys create");
+            var key              = gateway.Certificates.GetCurrentAndNextKey(OCPPServingNode.StationListener, out _);
+
+            Assert.Multiple(() => {
+
+                Assert.That(looked.First(),    Does.StartWith("No key is presented to the charging stations."));
+                Assert.That(refused.Single(),  Does.StartWith("'otto' may not do that here: it needs the "));
+                Assert.That(keysAfterRefusal,  Is.Zero);
+                Assert.That(key,               Is.Not.Null);
+                Assert.That(made.First(),      Is.EqualTo($"key pin       {key!.KeyPin.ToHex()}  {key.Id}"));
+
+                lock (said)
+                {
+                    Assert.That(said, Has.Some.EqualTo($"'adam' at the command line over SSH had this gateway generate the server key '{key.Id}' with the key pin {key.KeyPin.ToHex()}."));
+                    Assert.That(said, Has.Some.Contains("'otto' was refused certificates:edit on 'serverKeys'"));
                 }
 
             });

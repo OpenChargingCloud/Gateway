@@ -130,13 +130,15 @@ namespace cloud.charging.open.Gateway.CommandLine
         /// <summary>
         /// The commands of every node that serves charging stations, asking
         /// for the gateway's "stations" - once, in this class alone, so that a
-        /// command line derived from it has them once as well.
+        /// command line derived from it has them once as well. serverKeys asks
+        /// for the certificates, as the Server identities page does.
         /// </summary>
         private void RegisterStationCommands()
 
             => RegisterCommands(new StationKeysCommand   (this, GatewayAccess.Stations),
                                 new StationPinsCommand   (this, GatewayAccess.Stations),
-                                new StationTargetsCommand(this, GatewayAccess.Stations));
+                                new StationTargetsCommand(this, GatewayAccess.Stations),
+                                new ServerKeysCommand    (this));
 
         #endregion
 
