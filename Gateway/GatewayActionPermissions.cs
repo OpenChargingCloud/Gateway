@@ -95,6 +95,10 @@ namespace cloud.charging.open.Gateway
                    ActionPermission.Needs  ("DeleteSSHKey",          Edit(GatewayAccess.Stations)),
                    ActionPermission.Needs  ("GetInstalledSSHKeys",   Read(GatewayAccess.Stations)),
 
+                   // An SSH tunnel to this node's own SSH server, opened to its CSMS
+                   // for ssh -J through the CSMS (WWCP_OCPP_Node, DeviceModelBridge.SSHTunnels.cs).
+                   ActionPermission.Needs  ("OpenSSHTunnel",         Run (NodeResources.SSH)),
+
                    // The gateway's files.
                    ActionPermission.Needs  ("GetFile",               Read(NodeResources.Configuration)),
                    ActionPermission.Needs  ("ListDirectory",         Read(NodeResources.Configuration)),
